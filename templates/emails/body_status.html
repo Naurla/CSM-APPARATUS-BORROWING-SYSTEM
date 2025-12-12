@@ -1,0 +1,15 @@
+<p>Dear {{ RECIPIENT_NAME }},</p>
+<p>Your request (ID: <strong>#{{ FORM_ID }}</strong>) has been processed by the staff.</p>
+
+<div class="status-box {{ STATUS_CLASS }}">
+    Status: {{ STATUS_TEXT }}
+</div>
+
+<p>{{ DYNAMIC_MESSAGE }}</p>
+
+<h4 style="margin-top: 30px;">Staff Remarks:</h4>
+<div class="remarks-box">
+    {{ REMARKS }}
+</div>
+
+<p style="margin-top: 20px;">Thank you for using the system.</p>

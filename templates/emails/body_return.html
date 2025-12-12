@@ -1,0 +1,26 @@
+<p>Dear {{ RECIPIENT_NAME }},</p>
+<p>The staff has finalized the inspection of the items for your request (ID: <strong>#{{ FORM_ID }}</strong>).</p>
+
+<div class="status-box status-{{ CONDITION }}">
+    {{ STATUS_TEXT }}
+</div>
+
+{{ IF CONDITION == "good" }}
+<p style="color: green;">All returned items were found to be in **GOOD** condition. The transaction is now complete.</p>
+{{ ENDIF }}
+
+{{ IF CONDITION == "late" }}
+<p style="color: orange;">Your return was processed, but was marked as **LATE**. Please note this may affect future borrowing privileges.</p>
+{{ ENDIF }}
+
+{{ IF CONDITION == "damaged" }}
+<p style="color: red;">**IMPORTANT:** The return was processed, but **DAMAGE** was noted on one or more items.</p>
+<p>Please contact the office immediately regarding the damage report and potential liabilities.</p>
+{{ ENDIF }}
+
+<h4 style="margin-top: 30px;">Staff Remarks:</h4>
+<div class="remarks-box">
+    {{ REMARKS }}
+</div>
+
+<p style="margin-top: 20px;">Thank you for using the system.</p>
