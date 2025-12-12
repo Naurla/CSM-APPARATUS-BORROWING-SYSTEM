@@ -249,6 +249,8 @@ $pendingForms = $transaction->getPendingForms();
             --base-font-size: 15px; /* Base size for overall clarity */
             --header-height: 60px; /* Top Bar reference */
             --main-text: #333; /* Added for consistency */
+            --card-background: #fcfcfc; /* New: for mobile card background */
+            --label-bg: #e9ecef; /* Light gray background for mobile labels */
         }
 
         body { 
@@ -260,6 +262,22 @@ $pendingForms = $transaction->getPendingForms();
             margin: 0;
             font-size: var(--base-font-size);
             overflow-x: hidden; /* Prevent page-level scrollbar */
+        }
+        
+        /* NEW CSS for Mobile Toggle */
+        .menu-toggle {
+            display: none; /* Hidden on desktop */
+            position: fixed;
+            top: 15px;
+            left: 20px;
+            z-index: 1060; 
+            background: var(--msu-red);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 1.2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
         /* --- Top Header Bar Styles (UPDATED: Removed profile spacing from container) --- */
@@ -528,9 +546,160 @@ $pendingForms = $transaction->getPendingForms();
             background-color: #dc3545;
             border-color: #dc3545;
         }
+        
+        /* --- RESPONSIVE CSS --- */
+        
+        @media (max-width: 992px) {
+            /* Enable mobile toggle and shift main content */
+            .menu-toggle { display: block; }
+            .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
+            .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
+            .main-content { margin-left: 0; padding-left: 15px; padding-right: 15px; padding-top: calc(var(--header-height) + 15px); }
+            .top-header-bar { left: 0; padding-left: 70px; padding-right: 15px; }
+            .content-area { padding: 20px 15px; }
+            .page-header { font-size: 1.8rem; }
+        }
+
+        @media (max-width: 768px) {
+            /* Full mobile table stacking */
+            .table { min-width: auto; } /* Disable horizontal scrolling */
+            .table thead { display: none; } 
+            .table tbody, .table tr, .table td { display: block; width: 100%; }
+            
+            .table tr {
+                margin-bottom: 15px; 
+                border: 1px solid #ccc;
+                border-left: 5px solid var(--msu-red); 
+                border-radius: 8px; 
+                background-color: #fcfcfc; 
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
+                padding: 0; 
+                overflow: hidden;
+            }
+            
+            .table td {
+                text-align: right !important; 
+                padding-left: 50% !important;
+                position: relative;
+                border: none;
+                border-bottom: 1px solid #eee;
+                padding: 10px 10px !important; 
+            }
+            .table td:last-child { border-bottom: none; }
+
+            /* --- Label Styling (Clean and Clear) --- */
+            .table td::before {
+                content: attr(data-label);
+                position: absolute;
+                left: 0; 
+                width: 50%;
+                height: 100%;
+                padding: 10px;
+                white-space: nowrap;
+                text-align: left;
+                font-weight: 600;
+                color: var(--main-text); 
+                font-size: 0.9rem;
+                background-color: var(--label-bg); 
+                border-right: 1px solid #ddd;
+                display: flex;
+                align-items: center;
+            }
+
+            /* --- Header Grouping (Form ID, Student Details, Status) --- */
+            
+            .table tbody tr td:nth-child(1) { /* Form ID */
+                text-align: left !important;
+                padding: 10px !important;
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: #6c757d;
+                border-bottom: 1px solid #ddd;
+            }
+            .table tbody tr td:nth-child(1)::before {
+                content: "Form "; 
+                background: none;
+                border: none;
+                color: #6c757d;
+                font-size: 0.9rem;
+                padding: 0;
+                position: static;
+                width: auto;
+                height: auto;
+            }
+            
+            .table tbody tr td:nth-child(2) { /* Student Details - Primary visual item */
+                font-size: 1.1rem;
+                font-weight: 700;
+                color: var(--msu-red-dark);
+                border-bottom: 2px solid var(--msu-red);
+            }
+            .table tbody tr td:nth-child(2)::before {
+                content: "Borrower";
+                background-color: #f8d7da; /* Very light red background */
+                color: var(--msu-red-dark);
+                font-weight: 700;
+            }
+            
+            .table tbody tr td:nth-child(4) { /* Status - Special treatment */
+                 font-weight: 700;
+            }
+            
+            /* --- Remarks & Actions Grouping --- */
+            
+            .table tbody tr td:nth-child(8), /* Student Remarks */
+            .table tbody tr td:nth-child(9) { /* Staff Remarks/Unit Select */
+                padding-left: 10px !important; 
+                text-align: left !important;
+                font-size: 0.9rem;
+            }
+            .table tbody tr td:nth-child(8)::before, 
+            .table tbody tr td:nth-child(9)::before {
+                position: static;
+                width: 100%;
+                height: auto;
+                background: #f8f8f8;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                margin-bottom: 5px;
+                display: block;
+                padding: 10px;
+                text-align: left;
+            }
+
+            .table tbody tr td:nth-child(10) { /* Actions cell - Last block */
+                border-bottom: none;
+            }
+            
+            /* Action Button Grouping: Stacked for best touch interaction */
+            .actions-cell {
+                padding: 10px 10px 15px 10px !important; 
+            }
+            .btn-group-vertical {
+                flex-direction: column;
+                gap: 8px;
+                width: 100%;
+            }
+            .btn-group-vertical button, .btn-group-vertical a {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 576px) {
+            /* Smallest screen adjustments */
+            .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
+            .content-area { padding: 10px; }
+            .top-header-bar { padding-left: 65px; }
+            .table tbody tr td:nth-child(2) { font-size: 0.9rem; } /* Shrink font a bit more */
+            .table td::before { font-size: 0.85rem; }
+        }
     </style>
 </head>
 <body>
+
+<button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation menu">
+    <i class="fas fa-bars"></i>
+</button>
 
 <div class="sidebar">
     <div class="sidebar-header">
@@ -626,8 +795,8 @@ $pendingForms = $transaction->getPendingForms();
                         
                         // FIX 1: Display student remarks by pulling from the staff_remarks column (since there is no student_remarks column).
                         $student_remarks = ($clean_status === 'checking') ? 
-                                                     ($full_form_data['staff_remarks'] ?? '-') : 
-                                                     'N/A';
+                                                    ($full_form_data['staff_remarks'] ?? '-') : 
+                                                    'N/A';
                         
                         // Fetch unit-level items for the "Mark Damaged" dropdown
                         $items = $transaction->getTransactionItems($form["id"]);
@@ -649,36 +818,34 @@ $pendingForms = $transaction->getPendingForms();
 
                     ?>
                         <tr>
-                            <td><?= htmlspecialchars($form["id"]) ?></td>
-                            <td class="text-start">
+                            <td data-label="Form ID:"><?= htmlspecialchars($form["id"]) ?></td>
+                            <td data-label="Student Details:">
                                 <strong><?= htmlspecialchars($form["firstname"] ?? '') ?> <?= htmlspecialchars($form["lastname"] ?? '') ?></strong>
                                 <br>
                                 <small class="text-muted">(ID: <?= htmlspecialchars($form["borrower_id"]) ?>)</small>
                             </td>
-                            <td><?= htmlspecialchars($form["apparatus_list"] ?? '-') ?></td> 
-                            <td>
+                            <td data-label="Apparatus (First Item):"><?= htmlspecialchars($form["apparatus_list"] ?? '-') ?></td> 
+                            <td data-label="Status:">
                                 <span class="status-tag <?= $clean_status ?>">
                                     <?= $display_status ?>
                                 </span>
                             </td>
-                            <td><?= htmlspecialchars($form["borrow_date"] ?? '-') ?></td>
-                            <td><?= htmlspecialchars($form["expected_return_date"] ?? '-') ?></td>
-                            <td><?= htmlspecialchars($form["actual_return_date"] ?? '-') ?></td>
+                            <td data-label="Borrow Date:"><?= htmlspecialchars($form["borrow_date"] ?? '-') ?></td>
+                            <td data-label="Expected Return:"><?= htmlspecialchars($form["expected_return_date"] ?? '-') ?></td>
+                            <td data-label="Actual Return:"><?= htmlspecialchars($form["actual_return_date"] ?? '-') ?></td>
                             
-                            <td class="remarks-cell text-start">
-                                <?= htmlspecialchars($student_remarks) ?>
-                            </td>
+                            <td data-label="Student Remarks:"><?= htmlspecialchars($student_remarks) ?></td>
 
                             <form method="POST" class="pending-form" data-form-id="<?= htmlspecialchars($form["id"]) ?>">
-                                <td class="remarks-cell">
+                                <td data-label="Staff Remarks:" class="remarks-cell">
                                     <?php if ($clean_status == "checking" || $clean_status == "waiting_for_approval"): ?>
-                                                     <textarea name="staff_remarks" rows="2" placeholder="Enter staff remarks..."></textarea>
+                                                    <textarea name="staff_remarks" rows="2" placeholder="Enter staff remarks..."></textarea>
                                     <?php else: ?>
-                                                     -
+                                                    -
                                     <?php endif; ?>
-                                     <input type="hidden" name="form_id" value="<?= htmlspecialchars($form["id"]) ?>">
-                                     <input type="hidden" name="action_type" value=""> 
-                                     
+                                    <input type="hidden" name="form_id" value="<?= htmlspecialchars($form["id"]) ?>">
+                                    <input type="hidden" name="action_type" value=""> 
+                                    
                                     <?php if ($clean_status == "checking"): ?>
                                         <div class="mt-2 text-start">
                                             <label for="damaged_unit_id_<?= $form['id'] ?>" class="fw-bold mb-1">Mark Damaged Unit:</label>
@@ -697,21 +864,20 @@ $pendingForms = $transaction->getPendingForms();
                                     <?php endif; ?>
                                 </td>
 
-                                <td class="actions-cell">
+                                <td data-label="Actions:" class="actions-cell">
                                     <div class="btn-group-vertical">
                                     <?php if ($clean_status == "waiting_for_approval"): ?>
                                         <button type="submit" name="approve" class="btn approve">Approve</button>
                                         <button type="submit" name="reject" class="btn reject">Reject</button>
 
                                     <?php elseif ($clean_status == "checking"): ?>
-                                            
                                         <?php if ($is_currently_overdue): ?>
                                             <button type="button" 
-                                                            class="btn secondary late-return-btn" 
-                                                            data-bs-toggle="modal" 
-                                                            data-bs-target="#lateReturnModal"
-                                                            data-form-id="<?= htmlspecialchars($form["id"]) ?>">
-                                                            Confirm LATE Return
+                                                class="btn secondary late-return-btn" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#lateReturnModal"
+                                                data-form-id="<?= htmlspecialchars($form["id"]) ?>">
+                                                Confirm LATE Return
                                             </button>
                                         <?php else: ?>
                                             <button type="submit" name="approve_return" class="btn approve">Mark Returned (Good)</button>
@@ -721,11 +887,11 @@ $pendingForms = $transaction->getPendingForms();
 
                                     <?php elseif ($clean_status == "borrowed" && $is_ban_eligible_now): ?>
                                         <button type="button" 
-                                                            class="btn reject overdue-btn"
-                                                            data-bs-toggle="modal" 
-                                                            data-bs-target="#overdueModal"
-                                                            data-form-id="<?= htmlspecialchars($form["id"]) ?>">
-                                                            Manually Mark OVERDUE
+                                            class="btn reject overdue-btn"
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#overdueModal"
+                                            data-form-id="<?= htmlspecialchars($form["id"]) ?>">
+                                            Manually Mark OVERDUE
                                         </button>
                                             
                                     <?php else: ?>
@@ -890,10 +1056,10 @@ $pendingForms = $transaction->getPendingForms();
                 // Prepend Mark All button if there are unread items
                 if (unreadCount > 0) {
                      $header.after(`
-                          <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
-                             <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
-                          </a>
-                     `);
+                             <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
+                                <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
+                             </a>
+                        `);
                 }
 
                 // Iterate and insert notifications
@@ -956,6 +1122,37 @@ $pendingForms = $transaction->getPendingForms();
                 link.classList.remove('active');
             }
         });
+        
+        // Mobile Toggle Logic
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content'); 
+
+        if (menuToggle && sidebar) {
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                if (sidebar.classList.contains('active')) {
+                     mainContent.addEventListener('click', closeSidebarOnce);
+                } else {
+                     mainContent.removeEventListener('click', closeSidebarOnce);
+                }
+            });
+            
+            function closeSidebarOnce() {
+                 sidebar.classList.remove('active');
+                 mainContent.removeEventListener('click', closeSidebarOnce);
+            }
+            
+            const navLinks = sidebar.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                 link.addEventListener('click', () => {
+                     if (window.innerWidth <= 992) {
+                        sidebar.classList.remove('active');
+                     }
+                 });
+            });
+        }
+        
         
         // Initial fetch on page load
         fetchStaffNotifications();

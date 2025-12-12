@@ -53,8 +53,8 @@ function getFormItemsText($form_id, $transaction) {
         }
         
         $output .= '<div class="d-flex align-items-center justify-content-between my-1">';
-        $output .= '    <span class="me-2">' . $name . ' (x' . $quantity . ')</span>';
-        $output .= '    <span class="badge ' . $tag_class . '">' . $tag_text . '</span>';
+        $output .= '<span class="me-2">' . $name . ' (x' . $quantity . ')</span>';
+        $output .= '<span class="badge ' . $tag_class . '">' . $tag_text . '</span>';
         $output .= '</div>';
     }
     return $output;
@@ -182,7 +182,7 @@ foreach ($allApparatus as $app) {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
     <style>
-        /* --- General and Hub View CSS --- */
+        
         :root {
             --msu-red: #A40404; /* FIXED to consistent staff/student red */
             --msu-red-dark: #820303; /* FIXED to consistent dark red */
@@ -192,6 +192,8 @@ foreach ($allApparatus as $app) {
             --student-logout-red: #C62828; /* FIXED to consistent base red */
             --base-font-size: 15px;
             --main-text: #333; /* ADDED for top bar */
+            --label-bg: #e9ecef;
+            --card-background: #fcfcfc;
         }
 
         body { 
@@ -203,6 +205,22 @@ foreach ($allApparatus as $app) {
             margin: 0;
             font-size: var(--base-font-size);
             overflow-x: hidden;
+        }
+
+        /* NEW CSS for Mobile Toggle */
+        .menu-toggle {
+            display: none; /* Hidden on desktop */
+            position: fixed;
+            top: 15px;
+            left: 20px;
+            z-index: 1060; 
+            background: var(--msu-red);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 1.2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
         /* --- Top Header Bar Styles (ADDED) --- */
@@ -245,11 +263,6 @@ foreach ($allApparatus as $app) {
             min-width: 300px;
             padding: 0;
         }
-        .dropdown-item {
-            padding: 10px 15px;
-            white-space: normal;
-            transition: background-color 0.1s;
-        }
         .dropdown-item:hover {
             background-color: #f5f5f5;
         }
@@ -263,6 +276,7 @@ foreach ($allApparatus as $app) {
             border-top: 1px solid #eee;
         }
         /* --- END Top Header Bar Styles --- */
+        
         
         .sidebar {
             width: var(--sidebar-width);
@@ -279,6 +293,7 @@ foreach ($allApparatus as $app) {
             flex-direction: column;
             z-index: 1010;
         }
+
         .sidebar-header { text-align: center; padding: 25px 15px; font-size: 1.3rem; font-weight: 700; line-height: 1.2; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.4); margin-bottom: 25px; }
         .sidebar-header img { max-width: 100px; height: auto; margin-bottom: 15px; }
         .sidebar-header .title { font-size: 1.4rem; line-height: 1.1; }
@@ -333,7 +348,8 @@ foreach ($allApparatus as $app) {
             font-size: 2rem;
         }
         
-        /* The rest of the CSS remains unchanged */
+        
+        /* --- Report Hub Specific Styles --- */
         .report-section {
             border: 1px solid #ddd;
             border-radius: 8px;
@@ -361,10 +377,7 @@ foreach ($allApparatus as $app) {
             padding: 15px 20px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             transition: all 0.2s;
-            height: 100%; /* Ensure cards in a row have equal height */
-        }
-        .stat-card:hover {
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            height: 100%; 
         }
         .stat-icon {
             display: flex;
@@ -377,9 +390,6 @@ foreach ($allApparatus as $app) {
             color: white;
             margin-right: 15px;
             flex-shrink: 0;
-        }
-        .stat-body {
-            flex-grow: 1;
         }
         .stat-value {
             font-size: 1.6rem;
@@ -395,52 +405,33 @@ foreach ($allApparatus as $app) {
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .bg-light-gray {
-            background-color: #f9f9f9 !important;
-        }
-        .border-danger {
-            border-left: 5px solid var(--student-logout-red) !important; /* Highlight overdue */
-        }
-        .report-stat-box { display: none !important; }
+        .bg-light-gray { background-color: #f9f9f9 !important; }
+        .border-danger { border-left: 5px solid var(--student-logout-red) !important; }
 
+        /* Hide the stat tables which are only for print */
+        .print-stat-table-container { display: none; }
+        
         /* --- DETAILED HISTORY STYLES (Screen View) --- */
         
-        /* FIX: Remove all borders from the table for the screen view */
-        .table-no-border {
-            border: none !important; 
-            /* Ensure the main div doesn't overflow if the table is too wide, but table-responsive was removed */
-            width: 100%; 
+        .table-responsive {
+            border-radius: 8px;
+            overflow-x: auto; 
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            margin-top: 25px; 
         }
-        .table-no-border tbody tr, 
-        .table-no-border tbody td, 
-        .table-no-border thead th {
-            border: none !important; 
-        }
-        /* Ensure striped rows are transparent if borderless */
-        .table-no-border.table-striped tbody tr:nth-of-type(odd) {
-            background-color: transparent !important; 
+        .table {
+            min-width: 1200px; /* Adjust min width */
         }
         
-        /* FIX: Remove outline/border from status badge in screen view */
-        .table tbody td .badge {
-            border: none !important;
-            box-shadow: none !important;
-            min-width: 85px; 
-            white-space: nowrap;
-        }
-
-        /* Normal table headers (for screen view if table-no-border is removed) */
         .table thead th {
             background-color: var(--msu-red);
             color: white;
             font-weight: 700; 
             vertical-align: middle;
             font-size: 1rem; 
-            padding: 10px 5px;
-            /* Allow wrapping if necessary to fit */
+            padding: 10px 5px; 
             white-space: normal; 
         }
-        
         .table tbody td { 
             vertical-align: top;
             padding-top: 8px; 
@@ -454,65 +445,19 @@ foreach ($allApparatus as $app) {
             text-align: left !important;
             padding-left: 10px !important;
         }
-        
-        /* Badges for Detailed Items (Screens) */
         .detailed-items-cell .badge { margin-left: 5px; font-size: 0.85rem; font-weight: 700; }
-        .detailed-items-cell .d-flex { 
-            line-height: 1.4; 
-            font-size: 1rem; 
-            min-height: 1.5em; 
-        }
+        .detailed-items-cell .d-flex { line-height: 1.4; font-size: 1rem; min-height: 1.5em; }
         
-        /* FIX: Adjusted column widths for better fit on screen view */
-        .table th:nth-child(1) { width: 4%; } 
-        .table th:nth-child(2) { width: 8%; } 
-        .table th:nth-child(3) { width: 12%; } 
-        .table th:nth-child(4) { width: 6%; } 
-        .table th:nth-child(5) { width: 10%; } 
-        .table th:nth-child(6), 
-        .table th:nth-child(7), 
-        .table th:nth-child(8) { width: 9%; font-size: 0.95rem; } /* Slightly smaller date columns */
-        .table th:nth-child(9) { width: 33%; } 
         
-        /* --- STATUS TAGS & ITEM DETAILS --- (Screens) */
-        .badge.bg-dark-monochrome { background-color: #343a40 !important; color: white !important; } 
-        .badge.bg-success { background-color: #28a745 !important; } 
-        .badge.bg-warning { background-color: #ffc107 !important; color: #343a40 !important; } 
-        .badge.bg-danger { background-color: #dc3545 !important; } 
-        .badge.bg-secondary { background-color: #6c757d !important; } 
-        .badge.bg-primary { background-color: #007bff !important; } 
-        .badge.bg-info { background-color: #17a2b8 !important; } 
-
-
         /* --- PRINT STYLING (Monochrome & Unified) --- */
         
-        .print-header {
-            display: none; 
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #333; 
-            text-align: center;
-        }
-        .wmsu-logo-print {
-            display: none;
-        }
+        .print-header { display: none; }
+        .wmsu-logo-print { display: none; }
 
         @media print {
-            /* 1. Page, General Reset, and Hide Elements */
-            body, .main-content {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: white !important; 
-                width: 100%;
-                color: #000;
-            }
-            .sidebar, .page-header, .filter-form, .print-summary-footer, .top-header-bar { /* HIDDEN TOP BAR */
-                display: none !important;
-            }
-            @page {
-                size: A4 portrait; 
-                margin: 0.7cm; 
-            }
+            body { margin: 0 !important; padding: 0 !important; background: white !important; color: #000; }
+            .sidebar, .page-header, .filter-form, .print-summary-footer, .top-header-bar { display: none !important; }
+            @page { size: A4 portrait; margin: 0.7cm; }
             
             /* Print Header */
             .print-header {
@@ -524,175 +469,206 @@ foreach ($allApparatus as $app) {
                 margin-bottom: 25px;
                 border-bottom: 3px solid #000;
             }
-            .wmsu-logo-print {
-                display: block !important;
-                width: 70px; 
-                height: auto;
-                margin-bottom: 5px;
-            }
-            .print-header .logo { 
-                font-size: 0.9rem; 
-                font-weight: 600; 
-                margin-bottom: 2px;
-                color: #555;
-            }
-            .print-header h1 { 
-                font-size: 1.5rem; 
-                font-weight: 700; 
-                margin: 0; 
-                color: #000; 
-            } 
-            .print-header p { 
-                font-size: 0.8rem; 
-                margin: 0; 
-                color: #555; 
-            }
+            .wmsu-logo-print { display: block !important; width: 70px; height: auto; margin-bottom: 5px; }
+            .print-header .logo { font-size: 0.9rem; font-weight: 600; margin-bottom: 2px; color: #555; }
+            .print-header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; color: #000; } 
             
-            /* 2. Unified Report Section Styling */
-            .report-section {
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0;
-                margin-bottom: 25px; 
-            }
-            .report-section h3 {
-                color: #333 !important; 
-                border-bottom: 1px solid #ccc !important;
-                padding-bottom: 5px;
-                margin-bottom: 15px;
-                font-size: 1.4rem; 
-                font-weight: 600;
-                page-break-after: avoid; 
-                text-align: left;
-            }
+            /* Unified Report Section Styling */
+            .report-section { border: none !important; box-shadow: none !important; padding: 0; margin-bottom: 25px; }
+            .report-section h3 { color: #333 !important; border-bottom: 1px solid #ccc !important; padding-bottom: 5px; margin-bottom: 15px; font-size: 1.4rem; font-weight: 600; page-break-after: avoid; text-align: left; }
 
-            /* 3. Style Summary and Inventory back to Monochrome Tables for Print */
-            /* Hiding the card structure for print */
-            .print-summary .row, .print-inventory .row { display: none !important; }
+            /* Summary & Inventory Tables for Print */
+            .report-section .row { display: none !important; }
+            .print-stat-table-container { display: block !important; margin-bottom: 30px; }
+            .print-stat-table { width: 100%; border-collapse: collapse !important; font-size: 0.9rem; }
+            .print-stat-table th, .print-stat-table td { border: 1px solid #000 !important; padding: 8px 10px !important; vertical-align: middle; color: #000; font-size: 0.9rem; line-height: 1.2; }
+            .print-stat-table th { background-color: #eee !important; font-weight: 700; width: 70%; }
+            .print-stat-table td { text-align: center; font-weight: 700; width: 30%; color: #000 !important; }
+            .print-stat-table tr:nth-child(even) td { background-color: #f9f9f9 !important; }
             
-            .print-stat-table-container { 
-                display: block !important;
-                margin-bottom: 30px;
-            }
-            .print-stat-table {
-                width: 100%;
-                border-collapse: collapse !important;
-                font-size: 0.9rem;
-            }
-            .print-stat-table th, 
-            .print-stat-table td {
-                border: 1px solid #000 !important; /* Re-apply borders for print */
-                padding: 8px 10px !important;
-                vertical-align: middle;
-                color: #000;
-                font-size: 0.9rem;
-                line-height: 1.2;
-            }
-            .print-stat-table th {
-                background-color: #eee !important; 
-                font-weight: 700;
-                width: 70%; 
-            }
-            .print-stat-table td {
-                text-align: center;
-                font-weight: 700;
-                width: 30%;
-                color: #000 !important; 
-            }
-            .print-stat-table tr:nth-child(even) td {
-                background-color: #f9f9f9 !important;
-            }
-            
-            /* Force monochrome for colors */
-            .print-stat-table * {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-
-            /* 4. Detailed History Table Styles (Monochrome Status Badges) */
-            
-            body[data-print-view="detailed"] @page {
-                size: A4 landscape; 
-            }
-            
-            /* Print Column Widths (Different than screen to ensure landscape fit) */
-            .table th:nth-child(1) { width: 3%; } /* Form ID */
-            .table th:nth-child(2) { width: 7%; } /* Student ID */
-            .table th:nth-child(3) { width: 10%; } /* Borrower Name */
-            .table th:nth-child(4) { width: 5%; } /* Type */
-            .table th:nth-child(5) { width: 8%; } /* Status */
-            .table th:nth-child(6) { width: 9%; } /* Borrow Date */
-            .table th:nth-child(7) { width: 9%; } /* Expected Return */
-            .table th:nth-child(8) { width: 9%; } /* Actual Return */
-            .table th:nth-child(9) { width: 40%; } /* Items Borrowed */
-
-            .table thead th, .table tbody td {
-                border: 1px solid #000 !important; /* Re-apply borders for print */
-                padding: 6px !important; 
-                color: #000 !important;
-                vertical-align: top !important; 
-                font-size: 0.85rem !important; 
-            }
-
-            .table thead th {
-                background-color: #eee !important; 
-                font-weight: 700 !important;
-                white-space: normal; 
-            }
+            /* Detailed History Table Styles */
+            body[data-print-view="detailed"] @page { size: A4 landscape; } 
+            .table thead th, .table tbody td { border: 1px solid #000 !important; padding: 6px !important; color: #000 !important; vertical-align: top !important; font-size: 0.85rem !important; }
+            .table thead th { background-color: #eee !important; font-weight: 700 !important; white-space: normal; }
             .table tbody tr:nth-child(odd) { background-color: #f9f9f9 !important; }
-            .table tbody td.detailed-items-cell { padding-left: 10px !important; }
-
-
-            /* Hide the individual item status badges in print view */
+            
             .detailed-items-cell .badge { display: none !important; }
-            .detailed-items-cell .d-flex { 
-                display: block !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                font-size: 0.85rem !important;
-                line-height: 1.1;
-                border-bottom: 1px dotted #eee; 
-            }
-            .detailed-items-cell .d-flex:last-child {
-                border-bottom: none;
-            }
+            .detailed-items-cell .d-flex { display: block !important; margin: 0 !important; padding: 0 !important; font-size: 0.85rem !important; line-height: 1.1; border-bottom: 1px dotted #eee; }
+            .detailed-items-cell .d-flex:last-child { border-bottom: none; }
 
-            /* CRITICAL: Status Badge - Set to Monochrome */
+            /* Status Badge - Set to Monochrome for print */
             .table tbody td .badge {
-                min-width: 90px;
-                white-space: nowrap;
-                line-height: 1.1;
-                font-size: 0.85rem !important;
-                color: #000 !important; /* Force text to black */
-                background-color: transparent !important; /* Remove background color */
-                border: 1px solid #000; /* Add a border to distinguish the box */
+                color: #000 !important; 
+                background-color: transparent !important; 
+                border: 1px solid #000; 
                 -webkit-print-color-adjust: exact; 
                 print-color-adjust: exact; 
                 box-shadow: none !important;
             }
 
-
-            /* 5. Conditional Section Display (Crucial for Print Fix) */
+            /* Conditional Section Display (Crucial for Print Fix) */
             .print-target { display: none; }
-
             body[data-print-view="summary"] .print-summary,
             body[data-print-view="inventory"] .print-inventory,
             body[data-print-view="detailed"] .print-detailed,
-            body[data-print-view="all"] .print-target {
-                display: block !important;
-            }
-            
+            body[data-print-view="all"] .print-target { display: block !important; }
             body[data-print-view="summary"] .print-summary .print-stat-table-container,
             body[data-print-view="inventory"] .print-inventory .print-stat-table-container,
             body[data-print-view="all"] .print-summary .print-stat-table-container,
-            body[data-print-view="all"] .print-inventory .print-stat-table-container {
-                display: block !important;
+            body[data-print-view="all"] .print-inventory .print-stat-table-container { display: block !important; }
+
+             /* Force monochrome for colors */
+            .table * {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
+
+        /* --- MOBILE RESPONSIVE CSS (Stacked Layout) --- */
+
+        /* 1. Mobile Sidebar Toggle & Layout Shift */
+        @media (max-width: 992px) {
+            .menu-toggle { display: block; }
+            .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
+            .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
+            .main-content { margin-left: 0; padding-left: 15px; padding-right: 15px; padding-top: calc(var(--header-height) + 15px); }
+            .top-header-bar { left: 0; padding-left: 70px; padding-right: 15px; }
+            .content-area { padding: 20px 15px; }
+            .page-header { font-size: 1.8rem; }
+            
+            /* Filter form stacking */
+            #report-filter-form .row { margin: 0; }
+            #report-filter-form > .col-md-3,
+            #report-filter-form > .col-md-6 { width: 100% !important; margin-top: 15px !important; }
+            .d-flex.justify-content-between.align-items-center { flex-direction: column; align-items: stretch !important; }
+            .d-flex.justify-content-between.align-items-center > * { width: 100%; }
+        }
+
+        @media (max-width: 768px) {
+            .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
+            .content-area { padding: 10px; }
+
+            /* Report Hub Card Styling */
+            .report-section .row > div { width: 100% !important; margin-bottom: 15px; }
+            .report-section h3 { font-size: 1.3rem; }
+            .stat-card { border-left: 5px solid #ddd; } 
+            .stat-label { font-size: 1rem; }
+            .stat-value { font-size: 1.8rem; }
+            
+            /* Detailed History Table Stacking */
+            .table-responsive { overflow-x: hidden; }
+            .table { min-width: auto; }
+            .table thead { display: none; }
+            .table tbody, .table tr, .table td { display: block; width: 100%; }
+            
+            .table tr {
+                margin-bottom: 15px; 
+                border: 1px solid #ccc;
+                border-left: 5px solid var(--msu-red);
+                border-radius: 8px; 
+                background-color: var(--card-background); 
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
+                padding: 0; 
+                overflow: hidden;
+            }
+            
+            .table td {
+                text-align: right !important; 
+                padding-left: 50% !important;
+                position: relative;
+                border: none;
+                border-bottom: 1px solid #eee;
+                padding: 10px 10px !important; 
+            }
+            .table td:last-child { border-bottom: none; }
+
+            /* --- Labels (Clean Look) --- */
+            .table td::before {
+                content: attr(data-label);
+                position: absolute;
+                left: 0; 
+                width: 50%;
+                height: 100%;
+                padding: 10px;
+                white-space: nowrap;
+                text-align: left;
+                font-weight: 600;
+                color: var(--main-text); 
+                font-size: 0.9rem;
+                background-color: var(--label-bg); 
+                border-right: 1px solid #ddd;
+                display: flex;
+                align-items: center;
+            }
+            
+            /* --- Custom Headers (Data Hierarchy) --- */
+            
+            .table tbody tr td:nth-child(1) { /* Form ID - Top of card */
+                text-align: left !important;
+                padding: 10px !important;
+                font-weight: 700;
+                color: #6c757d;
+                background-color: #f8f8f8;
+                border-bottom: 1px solid #ddd;
+            }
+            .table tbody tr td:nth-child(1)::before {
+                content: "Form "; 
+                background: none;
+                border: none;
+                color: #6c757d;
+                font-size: 0.9rem;
+                padding: 0;
+                position: static;
+                width: auto;
+                height: auto;
+            }
+
+            .table tbody tr td:nth-child(3) { /* Borrower Name (Primary Detail) */
+                font-size: 1rem;
+                font-weight: 700;
+                color: var(--msu-red-dark);
+            }
+            .table tbody tr td:nth-child(3)::before {
+                content: "Borrower Name";
+                background-color: #f8f8f8; 
+                color: var(--msu-red-dark);
+                font-weight: 700;
+            }
+            
+            .table tbody tr td:nth-child(10) { /* Items Borrowed - Full width block */
+                text-align: left !important;
+                padding-left: 10px !important;
+                border-bottom: none; /* Final item, no border */
+            }
+            .table tbody tr td:nth-child(10)::before {
+                content: "Items Borrowed";
+                position: static;
+                width: 100%;
+                height: auto;
+                background: #f8f8f8;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                display: block;
+                padding: 10px;
+                margin-bottom: 5px;
+            }
+            .detailed-items-cell .d-flex {
+                 /* Give inner item details better flow on small screen */
+                 flex-wrap: wrap; 
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .top-header-bar { padding-left: 65px; }
+        }
+        
     </style>
 </head>
 <body data-print-view="<?= htmlspecialchars($report_view_type) ?>">
+
+<button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation menu">
+    <i class="fas fa-bars"></i>
+</button>
 
 <div class="sidebar">
     <div class="sidebar-header">
@@ -806,12 +782,12 @@ foreach ($allApparatus as $app) {
                 <div class="col-md-3">
                     <label for="start_date" class="form-label">Start Date (Form Created)</label>
                     <input type="date" name="start_date" id="start_date" class="form-control" 
-                                     value="<?= htmlspecialchars($start_date) ?>">
+                                             value="<?= htmlspecialchars($start_date) ?>">
                 </div>
                 <div class="col-md-3">
                     <label for="end_date" class="form-label">End Date (Form Created)</label>
                     <input type="date" name="end_date" id="end_date" class="form-control" 
-                                     value="<?= htmlspecialchars($end_date) ?>">
+                                             value="<?= htmlspecialchars($end_date) ?>">
                 </div>
                 
                 <div class="col-md-3 mt-3">
@@ -916,7 +892,7 @@ foreach ($allApparatus as $app) {
                 </div>
             </div>
             
-            <div class="print-stat-table-container" style="display:none;">
+            <div class="print-stat-table-container">
                 <table class="print-stat-table">
                     <thead>
                         <tr><th>Status Description</th><th>Count</th></tr>
@@ -969,7 +945,7 @@ foreach ($allApparatus as $app) {
             </div>
             <p class="text-muted small mt-3">*Note: Units marked Unavailable are not available for borrowing until their stock count is adjusted.</p>
             
-            <div class="print-stat-table-container" style="display:none;">
+            <div class="print-stat-table-container">
                 <table class="print-stat-table">
                     <thead>
                         <tr><th>Inventory Metric</th><th>Units</th></tr>
@@ -986,8 +962,8 @@ foreach ($allApparatus as $app) {
 
         <div class="report-section print-detailed print-target" id="report-detailed-table">
             <h3><i class="fas fa-history me-2"></i> Detailed Transaction History (Filtered: <?= count($reportForms) ?> Forms)</h3>
-            <div>
-                <table class="table table-striped table-sm align-middle table-no-border">
+            <div class="table-responsive">
+                <table class="table table-striped table-sm align-middle">
                     <thead>
                         <tr>
                             <th>Form ID</th>
@@ -1006,15 +982,19 @@ foreach ($allApparatus as $app) {
                         if (!empty($reportForms)): 
                             foreach ($reportForms as $form): ?>
                                 <tr>
-                                    <td><?= htmlspecialchars($form['id']) ?></td>
-                                    <td><?= htmlspecialchars($form['user_id']) ?></td>
-                                    <td><?= htmlspecialchars($form['firstname'] . ' ' . $form['lastname']) ?></td>
-                                    <td><?= htmlspecialchars(ucfirst($form['form_type'])) ?></td>
-                                    <td><?= getStatusBadge($form) ?></td> 
-                                    <td><?= htmlspecialchars($form['borrow_date'] ?? 'N/A') ?></td>
-                                    <td><?= htmlspecialchars($form['expected_return_date'] ?? 'N/A') ?></td>
-                                    <td><?= htmlspecialchars($form['actual_return_date'] ?? '-') ?></td> 
-                                    <td class="detailed-items-cell text-start"><?= getFormItemsText($form['id'], $transaction) ?></td> 
+                                    <td data-label="Form ID:"><?= htmlspecialchars($form['id']) ?></td>
+                                    <td data-label="Student ID:"><?= htmlspecialchars($form['user_id']) ?></td>
+                                    <td data-label="Borrower Name:">
+                                        <strong><?= htmlspecialchars($form['firstname'] . ' ' . $form['lastname']) ?></strong>
+                                    </td>
+                                    <td data-label="Type:"><?= htmlspecialchars(ucfirst($form['form_type'])) ?></td>
+                                    <td data-label="Status:"><?= getStatusBadge($form) ?></td> 
+                                    <td data-label="Borrow Date:"><?= htmlspecialchars($form['borrow_date'] ?? 'N/A') ?></td>
+                                    <td data-label="Expected Return:"><?= htmlspecialchars($form['expected_return_date'] ?? 'N/A') ?></td>
+                                    <td data-label="Actual Return:"><?= htmlspecialchars($form['actual_return_date'] ?? '-') ?></td> 
+                                    <td data-label="Items Borrowed:" class="detailed-items-cell text-start">
+                                        <?= getFormItemsText($form['id'], $transaction) ?>
+                                    </td> 
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -1088,10 +1068,10 @@ foreach ($allApparatus as $app) {
             if (notifications.length > 0) {
                 if (unreadCount > 0) {
                      $header.after(`
-                          <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
-                             <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
-                          </a>
-                     `);
+                             <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
+                                 <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
+                             </a>
+                        `);
                 }
 
                 notifications.slice(0, 5).forEach(notif => {
@@ -1135,7 +1115,7 @@ foreach ($allApparatus as $app) {
     // --- END JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
 
 
-    // --- Print Fix Logic (Alternative Method - Recommended for Chrome/Opera) ---
+    // --- Print Fix Logic ---
     function handlePrint() {
         const viewType = document.getElementById('report_view_type_select').value;
         
@@ -1150,33 +1130,92 @@ foreach ($allApparatus as $app) {
             document.body.removeAttribute('data-print-view');
         }, 100); 
     }
+    
+    // --- Update Hub View Logic (For Screen Display) ---
+    function updateHubView() {
+        const viewType = document.getElementById('report_view_type_select').value;
+        const sections = ['summary', 'inventory', 'detailed'];
+        
+        // Hide all sections first
+        sections.forEach(id => {
+            const section = document.getElementById(`report-${id}`);
+            if (section) section.style.display = 'none';
+        });
+
+        // Show relevant sections based on select box value
+        if (viewType === 'all') {
+            sections.forEach(id => {
+                const section = document.getElementById(`report-${id}`);
+                if (section) section.style.display = 'block';
+            });
+            // Show print button
+            document.getElementById('main-print-button').style.display = 'block';
+            document.getElementById('main-print-button').textContent = 'Print All Sections (Hub View)';
+        } else if (viewType === 'summary') {
+            document.getElementById('report-summary').style.display = 'block';
+            document.getElementById('main-print-button').style.display = 'block';
+            document.getElementById('main-print-button').textContent = 'Print Transaction Summary';
+        } else if (viewType === 'inventory') {
+            document.getElementById('report-inventory').style.display = 'block';
+            document.getElementById('main-print-button').style.display = 'block';
+            document.getElementById('main-print-button').textContent = 'Print Inventory Stock Status';
+        } else if (viewType === 'detailed') {
+            document.getElementById('report-detailed-table').style.display = 'block';
+            document.getElementById('main-print-button').style.display = 'block';
+            document.getElementById('main-print-button').textContent = 'Print Filtered Detailed History';
+        }
+    }
 
 
     document.addEventListener('DOMContentLoaded', () => {
         // --- Sidebar Activation ---
         const reportsLink = document.querySelector('a[href="staff_report.php"]');
         if (reportsLink) {
-            // Ensure only the current link is active
             document.querySelectorAll('.sidebar .nav-link').forEach(link => link.classList.remove('active'));
             reportsLink.classList.add('active');
         }
         
-        // **CRITICAL FIX:** Update CSS variables to current standard
-        document.querySelector(':root').style.setProperty('--msu-red', '#A40404');
-        document.querySelector(':root').style.setProperty('--msu-red-dark', '#820303');
-        
-        // Update Logout Hover to use the new dark red
-        document.styleSheets[0].insertRule('.logout-link .nav-link:hover { background-color: var(--msu-red-dark) !important; }', 0);
-        
-        // Set initial view state
-        updateHubView();
+        // --- Mobile Toggle Logic ---
+        const menuToggle = document.querySelector('.menu-toggle');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content'); 
 
+        if (menuToggle && sidebar) {
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                if (sidebar.classList.contains('active')) {
+                     mainContent.addEventListener('click', closeSidebarOnce);
+                } else {
+                     mainContent.removeEventListener('click', closeSidebarOnce);
+                }
+            });
+            
+            function closeSidebarOnce() {
+                 sidebar.classList.remove('active');
+                 mainContent.removeEventListener('click', closeSidebarOnce);
+            }
+            
+            const navLinks = sidebar.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                 link.addEventListener('click', () => {
+                     if (window.innerWidth <= 992) {
+                        sidebar.classList.remove('active');
+                     }
+                 });
+            });
+        }
+
+        // --- Event Listeners and Initial Load ---
+        
         // Attach event listener for dynamic changes in the Hub View
         const select = document.getElementById('report_view_type_select');
-        select.addEventListener('change', updateHubView);
+        if (select) select.addEventListener('change', updateHubView);
         
         // Attach print handler to button
         document.getElementById('main-print-button').addEventListener('click', handlePrint);
+        
+        // Set initial view state based on PHP variable
+        updateHubView();
         
         // --- Notification Initialization ---
         fetchStaffNotifications();

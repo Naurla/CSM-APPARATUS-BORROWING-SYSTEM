@@ -59,6 +59,22 @@ $returnedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'retur
             font-size: 1.05rem;
         }
         
+        /* NEW CSS for Mobile Toggle */
+        .menu-toggle {
+            display: none; /* Hidden on desktop */
+            position: fixed;
+            top: 15px;
+            left: 20px;
+            z-index: 1060; 
+            background: var(--msu-red);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 1.2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
         /* --- Top Header Bar Styles --- */
         .top-header-bar {
             position: fixed;
@@ -111,6 +127,7 @@ $returnedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'retur
             left: 0;
             display: flex;
             flex-direction: column;
+            z-index: 1050; /* Added z-index for mobile overlap */
         }
         .sidebar-header {
             text-align: center;
@@ -168,6 +185,7 @@ $returnedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'retur
             background-color: var(--msu-red-dark) !important; 
         }
         
+        /* Main content needs top padding and margin-left on desktop */
         .main-content {
             margin-left: var(--sidebar-width); 
             flex-grow: 1;
@@ -268,9 +286,88 @@ $returnedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'retur
         .status-tag.damaged { background-color: #343a40; color: white; border: 1px solid #212529; }
         
         .status-tag.returned-late { background-color: var(--status-overdue-solid); color: white; } 
+
+        /* --- RESPONSIVE ADJUSTMENTS --- (Copied and adjusted from student_dashboard.php) */
+        @media (max-width: 992px) {
+            /* Mobile Sidebar Toggle */
+            .menu-toggle { display: block; }
+            /* Set a smaller default width for mobile sidebar */
+            .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
+            .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
+
+            /* Main Content and Header Adjustments */
+            .main-content { 
+                margin-left: 0; 
+                padding-left: 15px; 
+                padding-right: 15px;
+                padding-top: calc(var(--header-height) + 15px); /* Adjusted top padding */ 
+            }
+            .top-header-bar { 
+                left: 0; 
+                padding-left: 70px; /* Space for the menu toggle button */
+                padding-right: 15px;
+            }
+            .content-area { padding: 25px; } /* Adjust padding for smaller screens */
+            .page-header { font-size: 1.8rem; }
+            .stat-card h3 { font-size: 1rem; }
+            .stat-card p { font-size: 3rem; }
+            .stat-icon-wrapper { font-size: 4rem; }
+        }
+        
+        @media (max-width: 768px) {
+            /* Stat cards will stack vertically due to Bootstrap's col-lg-3 col-md-6 */
+            .table thead { display: none; } /* Hide table headers for mobile */
+            .table tbody, .table tr, .table td { display: block; width: 100%; }
+            .table tr { margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; }
+            .table td { 
+                text-align: right !important; 
+                padding-left: 50% !important;
+                position: relative;
+                border: none;
+                border-bottom: 1px solid #eee;
+            }
+            .table td::before {
+                content: attr(data-label);
+                position: absolute;
+                left: 10px;
+                width: 45%;
+                padding-right: 10px;
+                white-space: nowrap;
+                text-align: left;
+                font-weight: 600;
+                color: #555;
+            }
+             .table tbody tr:last-child { border-bottom: none; }
+
+            /* Define data-labels for table cells */
+            .table td:nth-of-type(1)::before { content: "Form ID:"; }
+            .table td:nth-of-type(2)::before { content: "Student ID:"; }
+            .table td:nth-of-type(3)::before { content: "Type:"; }
+            .table td:nth-of-type(4)::before { content: "Status:"; }
+            .table td:nth-of-type(5)::before { content: "Borrow Date:"; }
+            .table td:nth-of-type(6)::before { content: "Expected Return:"; }
+
+            .status-tag { margin: 0 auto; display: block; width: fit-content; }
+        }
+
+        @media (max-width: 576px) {
+            /* Adjust header spacing on smallest screens */
+            .top-header-bar {
+                padding: 0 15px;
+                justify-content: flex-end;
+                padding-left: 65px;
+            }
+            .top-header-bar .notification-bell-container {
+                 margin-right: 15px;
+            }
+        }
     </style>
 </head>
 <body>
+
+<button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation menu">
+    <i class="fas fa-bars"></i>
+</button>
 
 <div class="sidebar">
     <div class="sidebar-header">
@@ -407,16 +504,16 @@ $returnedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'retur
                             }
                         ?>
                             <tr>
-                                <td><?= htmlspecialchars($form['id']) ?></td>
-                                <td><?= htmlspecialchars($form['user_id']) ?></td>
-                                <td><?= htmlspecialchars(ucfirst($form['form_type'])) ?></td>
-                                <td>
+                                <td data-label="Form ID:"><?= htmlspecialchars($form['id']) ?></td>
+                                <td data-label="Student ID:"><?= htmlspecialchars($form['user_id']) ?></td>
+                                <td data-label="Type:"><?= htmlspecialchars(ucfirst($form['form_type'])) ?></td>
+                                <td data-label="Status:">
                                     <span class="status-tag <?= $status_class ?>">
                                         <?= $display_status_text ?>
                                     </span>
                                 </td>
-                                <td><?= htmlspecialchars($form['borrow_date'] ?? '-') ?></td>
-                                <td><?= htmlspecialchars($form['expected_return_date'] ?? '-') ?></td>
+                                <td data-label="Borrow Date:"><?= htmlspecialchars($form['borrow_date'] ?? '-') ?></td>
+                                <td data-label="Expected Return:"><?= htmlspecialchars($form['expected_return_date'] ?? '-') ?></td>
                                 </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -557,6 +654,40 @@ $returnedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'retur
                 link.classList.remove('active');
             }
         });
+        
+        // New Mobile Toggle Logic
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content'); 
+
+        if (menuToggle && sidebar) {
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                // Optional: Close sidebar when clicking outside (simple solution)
+                if (sidebar.classList.contains('active')) {
+                     mainContent.addEventListener('click', closeSidebarOnce);
+                } else {
+                     mainContent.removeEventListener('click', closeSidebarOnce);
+                }
+            });
+            
+            // Function to close the sidebar only once after clicking outside
+            function closeSidebarOnce() {
+                 sidebar.classList.remove('active');
+                 mainContent.removeEventListener('click', closeSidebarOnce);
+            }
+            
+            // Close sidebar when a nav item is clicked
+            const navLinks = sidebar.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                 link.addEventListener('click', () => {
+                     // Check if we are on a mobile view before closing
+                     if (window.innerWidth <= 992) {
+                        sidebar.classList.remove('active');
+                     }
+                 });
+            });
+        }
         
         // Initial fetch on page load
         fetchStaffNotifications();

@@ -71,6 +71,8 @@ function getFormItemsText($form_id, $transaction) {
             --student-logout-red: #C62828; /* FIXED to consistent base red */
             --base-font-size: 15px; 
             --main-text: #333; /* ADDED for top bar */
+            --card-background: #fcfcfc;
+            --label-bg: #e9ecef;
         }
 
         body { 
@@ -82,6 +84,22 @@ function getFormItemsText($form_id, $transaction) {
             margin: 0;
             font-size: var(--base-font-size);
             overflow-x: hidden; /* CRITICAL: Prevent page-level scrollbar */
+        }
+        
+        /* NEW CSS for Mobile Toggle */
+        .menu-toggle {
+            display: none; /* Hidden on desktop */
+            position: fixed;
+            top: 15px;
+            left: 20px;
+            z-index: 1060; 
+            background: var(--msu-red);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 1.2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
         /* --- Top Header Bar Styles (ADDED) --- */
@@ -316,9 +334,159 @@ function getFormItemsText($form_id, $transaction) {
         .status-tag.returned { background-color: #28a74530; color: #28a745; }
         .status-tag.overdue, .status-tag.returned-late { background-color: #dc354530; color: #dc3545; border: 1px solid #dc3545; }
         
+        
+        /* --- RESPONSIVE CSS --- */
+        
+        @media (max-width: 992px) {
+            /* Enable mobile toggle and shift main content */
+            .menu-toggle { display: block; }
+            .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
+            .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
+            .main-content { margin-left: 0; padding-left: 15px; padding-right: 15px; padding-top: calc(var(--header-height) + 15px); }
+            .top-header-bar { left: 0; padding-left: 70px; padding-right: 15px; }
+            .content-area { padding: 20px 15px; }
+            .page-header { font-size: 1.8rem; }
+            
+            /* Filter/Search stacking below 992px */
+            #transactionFilterForm .d-flex { flex-direction: column; align-items: stretch !important; }
+            #transactionFilterForm .d-flex > * { width: 100%; margin-bottom: 10px; }
+            #transactionFilterForm .form-select-sm { width: 100% !important; }
+        }
+
+        @media (max-width: 768px) {
+            /* Full mobile table stacking (Stacked Card View) */
+            .table { min-width: auto; }
+            .table thead { display: none; } 
+            .table tbody, .table tr, .table td { display: block; width: 100%; }
+            
+            .table tr {
+                margin-bottom: 15px; 
+                border: 1px solid #ccc;
+                border-left: 5px solid var(--msu-red); /* Highlight left border */
+                border-radius: 8px; 
+                background-color: var(--card-background); 
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
+                padding: 0; 
+                overflow: hidden;
+            }
+            
+            .table td {
+                text-align: right !important; 
+                padding-left: 50% !important;
+                position: relative;
+                border: none;
+                border-bottom: 1px solid #eee;
+                padding: 10px 10px !important; 
+            }
+            .table td:last-child { border-bottom: none; }
+
+            /* --- Label Styling (Clean and Clear) --- */
+            .table td::before {
+                content: attr(data-label);
+                position: absolute;
+                left: 0; 
+                width: 50%;
+                height: 100%;
+                padding: 10px;
+                white-space: nowrap;
+                text-align: left;
+                font-weight: 600;
+                color: var(--main-text); 
+                font-size: 0.9rem;
+                background-color: var(--label-bg); 
+                border-right: 1px solid #ddd;
+                display: flex;
+                align-items: center;
+            }
+            
+            /* --- Header and Student Details --- */
+            .table tbody tr td:nth-child(1) { /* Form ID - Top of card */
+                text-align: left !important;
+                padding: 10px !important;
+                font-weight: 700;
+                color: #6c757d;
+                background-color: #f8f8f8;
+            }
+            .table tbody tr td:nth-child(1)::before {
+                content: "Form "; 
+                background: none;
+                border: none;
+                color: #6c757d;
+                font-size: 0.9rem;
+                padding: 0;
+                position: static;
+                width: auto;
+                height: auto;
+                font-weight: 600;
+            }
+            
+            .table tbody tr td:nth-child(2) { /* Student Details - Primary visual item */
+                font-size: 1.1rem;
+                font-weight: 700;
+                color: var(--msu-red-dark);
+                border-bottom: 2px solid #ddd;
+            }
+            .table tbody tr td:nth-child(2)::before {
+                content: "Borrower";
+                background-color: #f8f8f8; 
+                color: var(--msu-red-dark);
+                font-weight: 700;
+            }
+            
+            /* --- Apparatus List Cell (Custom Content) --- */
+            .table tbody tr td:nth-child(8) {
+                text-align: left !important;
+                padding-left: 10px !important;
+                border-bottom: 1px solid #ddd;
+            }
+            .table tbody tr td:nth-child(8)::before {
+                content: "Items & Status";
+                position: static;
+                width: 100%;
+                height: auto;
+                background: #f8f8f8;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                display: block;
+                padding: 10px;
+                margin-bottom: 5px;
+            }
+            
+            /* --- Staff Remarks (Last Item) --- */
+            .table tbody tr td:nth-child(9) {
+                 text-align: left !important; 
+                 padding-left: 10px !important;
+                 border-bottom: none;
+            }
+            .table tbody tr td:nth-child(9)::before {
+                content: "Staff Remarks";
+                position: static;
+                width: 100%;
+                height: auto;
+                background: #f8f8f8;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                display: block;
+                padding: 10px;
+                margin-bottom: 5px;
+            }
+        }
+
+        @media (max-width: 576px) {
+             /* Smallest screen adjustments */
+            .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
+            .content-area { padding: 10px; }
+            .top-header-bar { padding-left: 65px; }
+            .table tbody tr td:nth-child(2) { font-size: 0.9rem; }
+            .table td::before { font-size: 0.85rem; }
+        }
     </style>
 </head>
 <body>
+
+<button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation menu">
+    <i class="fas fa-bars"></i>
+</button>
 
 <div class="sidebar">
     <div class="sidebar-header">
@@ -443,24 +611,24 @@ function getFormItemsText($form_id, $transaction) {
                             }
                         ?>
                         <tr>
-                            <td class="fw-bold"><?= $trans['id'] ?></td>
-                            <td class="text-start">
+                            <td data-label="Form ID:"><?= $trans['id'] ?></td>
+                            <td data-label="Student Details:">
                                 <strong><?= htmlspecialchars($trans['firstname'] ?? '') ?> <?= htmlspecialchars($trans['lastname'] ?? '') ?></strong>
                                 <br>
                                 <small class="text-muted">(ID: <?= htmlspecialchars($trans['user_id']) ?>)</small>
                             </td>
-                            <td><?= ucfirst($trans['form_type']) ?></td>
+                            <td data-label="Type:"><?= ucfirst($trans['form_type']) ?></td>
                             
-                            <td>
+                            <td data-label="Status:">
                                 <span class="status-tag <?= $status_class ?>">
                                     <?= $display_status_text ?>
                                 </span>
                             </td>
-                            <td><?= $trans['borrow_date'] ?: '-' ?></td>
-                            <td><?= $trans['expected_return_date'] ?: '-' ?></td>
-                            <td><?= $trans['actual_return_date'] ?: '-' ?></td>
+                            <td data-label="Borrow Date:"><?= $trans['borrow_date'] ?: '-' ?></td>
+                            <td data-label="Expected Return:"><?= $trans['expected_return_date'] ?: '-' ?></td>
+                            <td data-label="Actual Return:"><?= $trans['actual_return_date'] ?: '-' ?></td>
                             
-                            <td class="apparatus-list-cell">
+                            <td data-label="Apparatus (Item & Status):" class="apparatus-list-cell">
                                 <?php 
                                 // Pass the main form status to the helper function for item-level status logic
                                 $form_status_for_helper = $trans['status'];
@@ -479,11 +647,11 @@ function getFormItemsText($form_id, $transaction) {
                                     } elseif ($item_status === 'returned') {
                                              // Check for LATE RETURN status consistency
                                              if ($form_status_for_helper === 'returned' && (isset($trans['is_late_return']) && $trans['is_late_return'] == 1)) {
-                                                $tag_class = 'returned-late'; // Red for late return
-                                                $tag_text = 'Returned (Late)';
+                                                 $tag_class = 'returned-late'; // Red for late return
+                                                 $tag_text = 'Returned (Late)';
                                              } else {
-                                                $tag_class = 'returned'; // Green for normal return
-                                                $tag_text = 'Returned';
+                                                 $tag_class = 'returned'; // Green for normal return
+                                                 $tag_text = 'Returned';
                                              }
                                     }
                                 ?>
@@ -495,7 +663,7 @@ function getFormItemsText($form_id, $transaction) {
                                     </div>
                                 <?php endforeach; ?>
                             </td>
-                            <td><?= htmlspecialchars($trans['staff_remarks'] ?? '-') ?></td>
+                            <td data-label="Staff Remarks:"><?= htmlspecialchars($trans['staff_remarks'] ?? '-') ?></td>
                         </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -580,10 +748,10 @@ function getFormItemsText($form_id, $transaction) {
                 // Prepend Mark All button if there are unread items
                 if (unreadCount > 0) {
                      $header.after(`
-                          <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
-                             <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
-                          </a>
-                     `);
+                             <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
+                                <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
+                             </a>
+                        `);
                 }
 
                 // Iterate and insert notifications
@@ -648,6 +816,36 @@ function getFormItemsText($form_id, $transaction) {
                  link.classList.remove('active');
             }
         });
+        
+        // --- Mobile Toggle Logic ---
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content'); 
+
+        if (menuToggle && sidebar) {
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                if (sidebar.classList.contains('active')) {
+                     mainContent.addEventListener('click', closeSidebarOnce);
+                } else {
+                     mainContent.removeEventListener('click', closeSidebarOnce);
+                }
+            });
+            
+            function closeSidebarOnce() {
+                 sidebar.classList.remove('active');
+                 mainContent.removeEventListener('click', closeSidebarOnce);
+            }
+            
+            const navLinks = sidebar.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                 link.addEventListener('click', () => {
+                     if (window.innerWidth <= 992) {
+                        sidebar.classList.remove('active');
+                     }
+                 });
+            });
+        }
         
         // --- Filter Submission Logic ---
         const statusFilter = document.getElementById('statusFilter');

@@ -349,6 +349,8 @@ if (!empty($search_query)) {
         --student-logout-red: #dc3545; 
         --base-font-size: 15px;
         --main-text: #333; 
+        --card-background: #fcfcfc; /* New: for mobile card background */
+        --label-bg: #e9ecef; /* Light gray background for mobile labels */
     }
 
     body { 
@@ -361,6 +363,22 @@ if (!empty($search_query)) {
         font-size: var(--base-font-size);
         /* CRITICAL: Prevents the page body from generating a horizontal scrollbar */
         overflow-x: hidden; 
+    }
+    
+    /* NEW CSS for Mobile Toggle */
+    .menu-toggle {
+        display: none; /* Hidden on desktop */
+        position: fixed;
+        top: 15px;
+        left: 20px;
+        z-index: 1060; 
+        background: var(--msu-red);
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 1.2rem;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
     
     /* --- Top Header Bar Styles (COPIED FROM DASHBOARD) --- */
@@ -667,10 +685,206 @@ if (!empty($search_query)) {
     /* Modal Custom Style for Warning (Unchanged) */
     #unitManageModal .modal-header { background-color: var(--msu-blue); color: white; }
     #restoreConfirmModal .modal-header { background-color: #ffc107; color: #333; }
+
+
+    /* --- RESPONSIVE ADJUSTMENTS --- */
+    @media (max-width: 992px) {
+        /* Mobile Sidebar Toggle */
+        .menu-toggle { display: block; }
+        /* Set a smaller default width for mobile sidebar */
+        .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
+        .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
+
+        /* Main Content and Header Adjustments */
+        .main-content { 
+            margin-left: 0; 
+            padding-left: 15px; 
+            padding-right: 15px;
+            padding-top: calc(var(--header-height) + 15px); /* Adjusted top padding */ 
+        }
+        .top-header-bar { 
+            left: 0; 
+            padding-left: 70px; /* Space for the menu toggle button */
+            padding-right: 15px;
+        }
+        .content-area { padding: 25px; } /* Adjust padding for smaller screens */
+        h2 { font-size: 1.8rem; }
+        h3 { font-size: 1.3rem; }
+        
+        /* Form responsiveness */
+        .add-form { padding: 15px; }
+        
+        /* Table responsiveness for 992px+ */
+        .table { min-width: 1000px; /* Adjust min width down slightly */ }
+    }
+    
+    @media (max-width: 768px) {
+        /* General content area padding adjustment */
+        .main-content { padding-left: 10px; padding-right: 10px; }
+        .content-area { padding: 15px; }
+
+        /* Full mobile table stacking */
+        .table thead { display: none; } 
+        .table tbody, .table tr, .table td { display: block; width: 100%; }
+        .table { min-width: auto; }
+        
+        /* === MOBILE CARD AESTHETICS IMPROVEMENT (CLEAN HIERARCHY) === */
+        .table tr { 
+            margin-bottom: 15px; 
+            border: 1px solid #ccc;
+            border-left: 5px solid var(--msu-red); /* Highlight left border */
+            border-radius: 8px; 
+            background-color: var(--card-background); 
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
+            padding: 0; 
+            overflow: hidden;
+        }
+        
+        .table td { 
+            text-align: right !important; 
+            padding-left: 50% !important;
+            position: relative;
+            border: none;
+            border-bottom: 1px solid #eee; /* Lighter border separation */
+            padding: 10px 10px !important; 
+        }
+        .table td:last-child { border-bottom: none; }
+        
+        /* --- 1. Header Group (ID, Image, Name) --- */
+        .table tbody td:nth-child(1), /* ID */
+        .table tbody td:nth-child(2), /* Image */
+        .table tbody td:nth-child(3) { /* Name */
+            padding: 10px 10px !important;
+            border-bottom: none; /* Removed internal border */
+        }
+        .table tbody td:nth-child(1)::before, 
+        .table tbody td:nth-child(2)::before {
+            display: none; /* Hide labels for ID/Image */
+        }
+        
+        .table tbody tr td:nth-child(1) { /* Top ID box */
+            text-align: left !important;
+            padding-left: 10px !important;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #6c757d;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .table tbody tr td:nth-child(2) { /* Image and Name container */
+            display: flex; 
+            align-items: center; 
+            text-align: left !important;
+            padding-left: 10px !important;
+            border-bottom: 2px solid #ddd;
+        }
+        .table tbody tr td:nth-child(3) { /* Name cell - becomes second part of the flexible container */
+            order: 2; /* Move name value next to the image */
+            flex-grow: 1;
+            padding-left: 10px !important;
+            text-align: left !important;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--msu-red-dark);
+            border-bottom: 2px solid #ddd;
+        }
+        .table tbody tr td:nth-child(3)::before {
+            display: none; /* Hide Name label, name is now the title */
+        }
+        
+        /* --- 2. Standard Labels (Clean Look) --- */
+        .table td::before {
+            content: attr(data-label);
+            background-color: var(--label-bg); 
+            color: var(--main-text); 
+            font-weight: 600;
+            font-size: 0.9rem;
+            border-right: 1px solid #ddd;
+            /* Resetting display for standard fields */
+            position: absolute;
+            height: 100%;
+            display: flex;
+            align-items: center;
+        }
+
+        /* --- 3. Highlight Critical Stock --- */
+        .table tbody td:nth-child(9)::before { /* Damaged */
+            background-color: #fff3cd; /* Warning light */
+            color: #856404; /* Warning dark text */
+            border-right-color: #ffeeba;
+        }
+        .table tbody td:nth-child(10)::before { /* Lost */
+            background-color: #f8d7da; /* Danger light */
+            color: #721c24; /* Danger dark text */
+            border-right-color: #f5c6cb;
+        }
+        
+        /* --- 4. Description Display --- */
+        .table tbody td:nth-child(12) { 
+            text-align: left !important; 
+            padding-left: 10px !important; 
+            font-size: 0.9rem;
+            border-bottom: none;
+        }
+        .table tbody td:nth-child(12)::before {
+            content: "Description:";
+            display: block;
+            position: static;
+            width: 100%;
+            height: auto;
+            color: var(--main-text);
+            background: #f8f8f8; 
+            font-weight: 600;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 5px;
+            border-right: none;
+        }
+
+        /* --- 5. Action Buttons --- */
+        .table td:nth-child(15),
+        .table td:nth-child(16) {
+             /* Combine action cells into one logical block with padding */
+            padding: 10px 10px 15px 10px !important; 
+        }
+        .table td:nth-child(15)::before,
+        .table td:nth-child(16)::before {
+            display: none;
+        }
+        .action-buttons-group { 
+            flex-direction: row; /* Horizontal flow for edit/delete */
+            flex-wrap: wrap; /* Allow wrapping if needed */
+            gap: 5px; 
+            justify-content: center;
+            align-items: stretch; 
+        }
+        .action-buttons-group .btn { flex-grow: 1; }
+        .action-buttons-group .btn-stock-action { width: 100%; }
+        .action-buttons-group:last-child { margin-top: 5px; } /* Separate Quick Stock from Edit/Delete */
+    }
+
+    /* Smallest Mobile adjustments */
+    @media (max-width: 576px) {
+        .top-header-bar {
+            padding: 0 15px;
+            justify-content: flex-end;
+            padding-left: 65px;
+        }
+        .table tbody tr td:nth-child(3) { 
+            font-size: 1rem;
+        }
+        .action-buttons-group {
+             flex-direction: column; /* Force stack on smallest screens */
+        }
+    }
 </style>
 
 </head>
 <body>
+
+<button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation menu">
+    <i class="fas fa-bars"></i>
+</button>
 
 <div class="sidebar">
     <div class="sidebar-header">
@@ -993,24 +1207,24 @@ if (!empty($search_query)) {
                     <?php if (!empty($apparatusList)): ?>
                         <?php foreach ($apparatusList as $app): ?>
                             <tr>
-                                <td><?= $app['id'] ?></td>
-                                <td>
+                                <td data-label="ID:"><?= $app['id'] ?></td>
+                                <td data-label="Image:">
                                     <img src="../uploads/apparatus_images/<?= htmlspecialchars($app['image'] ?? 'default.jpg') ?>" 
                                             alt="<?= htmlspecialchars($app['name']) ?>">
                                 </td>
-                                <td class="text-start"><?= htmlspecialchars($app['name']) ?></td>
-                                <td><?= htmlspecialchars($app['apparatus_type']) ?></td>
-                                <td><?= htmlspecialchars($app['size']) ?></td>
-                                <td><?= htmlspecialchars($app['material']) ?></td>
+                                <td data-label="Name:" class="text-start"><?= htmlspecialchars($app['name']) ?></td>
+                                <td data-label="Type:"><?= htmlspecialchars($app['apparatus_type']) ?></td>
+                                <td data-label="Size:"><?= htmlspecialchars($app['size']) ?></td>
+                                <td data-label="Material:"><?= htmlspecialchars($app['material']) ?></td>
                                 
-                                <td><?= htmlspecialchars($app['total_stock'] ?? '0') ?></td> 
-                                <td class="fw-bold <?= ($app['available_stock'] > 0 ? 'text-success' : 'text-danger') ?>"><?= htmlspecialchars($app['available_stock'] ?? '0') ?></td> 
+                                <td data-label="Total:"><?= htmlspecialchars($app['total_stock'] ?? '0') ?></td> 
+                                <td data-label="Available Stock:" class="fw-bold <?= ($app['available_stock'] > 0 ? 'text-success' : 'text-danger') ?>"><?= htmlspecialchars($app['available_stock'] ?? '0') ?></td> 
                                 
-                                <td class="fw-bold text-warning"><?= htmlspecialchars(max(0, $app['damaged_stock'] ?? '0')) ?></td> 
-                                <td class="fw-bold text-danger"><?= htmlspecialchars(max(0, $app['lost_stock'] ?? '0')) ?></td> 
-                                <td><?= htmlspecialchars($app['currently_out'] ?? '0') ?></td> 
+                                <td data-label="Damaged Units:" class="fw-bold text-warning"><?= htmlspecialchars(max(0, $app['damaged_stock'] ?? '0')) ?></td> 
+                                <td data-label="Lost Units:" class="fw-bold text-danger"><?= htmlspecialchars(max(0, $app['lost_stock'] ?? '0')) ?></td> 
+                                <td data-label="Out:"><?= htmlspecialchars($app['currently_out'] ?? '0') ?></td> 
                                 
-                                <td class="text-start">
+                                <td data-label="Description:" class="text-start">
                                     <?php 
                                         $description = htmlspecialchars($app['description'] ?? '');
                                         $display_limit = 60;
@@ -1029,18 +1243,18 @@ if (!empty($search_query)) {
                                     ?>
                                 </td>
                                 
-                                <td>
+                                <td data-label="Condition:">
                                     <span class="status-tag <?= htmlspecialchars($app['item_condition']) ?>">
                                         <?= htmlspecialchars(ucfirst($app['item_condition'])) ?>
                                     </span>
                                 </td>
-                                <td>
+                                <td data-label="Status:">
                                     <span class="status-tag <?= htmlspecialchars($app['status']) ?>">
                                         <?= htmlspecialchars(ucfirst($app['status'])) ?>
                                     </span>
                                 </td>
                                 
-                                <td class="text-center unit-actions-cell">
+                                <td data-label="Stock / Unit Actions:" class="text-center unit-actions-cell">
                                     <div class="action-buttons-group">
                                         <button type="button" 
                                             class="btn btn-sm btn-primary btn-stock-action" 
@@ -1066,7 +1280,7 @@ if (!empty($search_query)) {
                                     </div>
                                 </td>
 
-                                <td>
+                                <td data-label="Edit:">
                                     <div class="action-buttons-group">
                                         <a href="staff_apparatus.php?edit_id=<?= $app['id'] ?>" 
                                             class="btn btn-sm btn-warning btn-icon-only" 
@@ -1415,6 +1629,36 @@ if (!empty($search_query)) {
                 link.classList.remove('active');
             }
         });
+        
+        // New Mobile Toggle Logic
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content'); 
+
+        if (menuToggle && sidebar) {
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                if (sidebar.classList.contains('active')) {
+                     mainContent.addEventListener('click', closeSidebarOnce);
+                } else {
+                     mainContent.removeEventListener('click', closeSidebarOnce);
+                }
+            });
+            
+            function closeSidebarOnce() {
+                 sidebar.classList.remove('active');
+                 mainContent.removeEventListener('click', closeSidebarOnce);
+            }
+            
+            const navLinks = sidebar.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                 link.addEventListener('click', () => {
+                     if (window.innerWidth <= 992) {
+                        sidebar.classList.remove('active');
+                     }
+                 });
+            });
+        }
         
         // Delete Modal Handler (Existing)
         const deleteModal = document.getElementById('deleteApparatusModal');
