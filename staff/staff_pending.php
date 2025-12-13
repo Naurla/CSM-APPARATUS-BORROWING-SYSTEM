@@ -28,7 +28,7 @@ $is_success = false;
 $db_conn = $transaction->connect(); 
 $staff_id = $_SESSION["user"]["id"];
 
-// --- HELPER FUNCTION 1: Mark Staff Notification as Read (For legacy compatibility) ---
+// --- HELPER FUNCTION 1: Mark Staff Notification as Read (For legacy compatibility - KEEP) ---
 function markNotificationAsRead($db_conn, $form_id, $staff_id) {
     // This function is generally deprecated by $transaction->clearNotificationsByFormId
     $form_link_pattern = "%staff_pending.php?view={$form_id}%"; 
@@ -42,7 +42,8 @@ function markNotificationAsRead($db_conn, $form_id, $staff_id) {
     $mark_read_stmt->execute();
 }
 
-// --- HELPER FUNCTION 2: Insert a Student Notification (System Alert) ---
+// --- HELPER FUNCTION 2: Insert a Student Notification (System Alert - KEEP) ---
+// This is used for internal bell notifications, not external emails.
 function insertStudentNotification($db_conn, $student_id, $type, $msg, $link) {
     $sql = "INSERT INTO notifications (user_id, type, message, link, is_read, created_at) 
             VALUES (:user_id, :type, :message, :link, 0, NOW())";
@@ -67,7 +68,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $remarks = $_POST["staff_remarks"] ?? ''; 
     
     // --- CRITICAL PRE-FETCH: Get Form and Student Details ---
-    // This uses the improved getBorrowFormById (fixed date selection)
+    // Fetch data using the fixed getBorrowFormById (which includes dates)
     $form_data = $transaction->getBorrowFormById($form_id); 
     
     if (!$form_data) {
@@ -77,16 +78,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         exit;
     }
     
+    // ** EXPLICIT DATE ASSIGNMENT FOR MAILER **
+    // Use the fetched dates. Since the status update is manual, we use the DB request/expected dates.
+    $request_date = $form_data['request_date'] ?? $form_data['borrow_date'] ?? ''; 
+    $expected_return_date = $form_data['expected_return_date'] ?? '';
+    // ****************************************
+
     $student_details = $student_class->getUserById($form_data['user_id']); 
     $student_email = $student_details['email'] ?? null;
     $student_id_to_notify = $form_data['user_id'];
     $student_name = $student_details['firstname'] ?? 'Borrower';
     $student_link = "../student/student_view_items.php?form_id={$form_id}&context=dashboard";
 
-    // --- NEW: FETCH DATES AND ITEM LIST FOR MAILER ---
-    // Ensure these variables are populated from the fixed $form_data
-    $request_date = $form_data['request_date'] ?? date('Y-m-d');
-    $expected_return_date = $form_data['expected_return_date'] ?? date('Y-m-d');
+    // --- FETCH ITEM LIST FOR MAILER ---
     $item_list_for_email = $transaction->getFormItemsForEmail($form_id);
     // ----------------------------------------------------
 
@@ -100,7 +104,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $transaction->clearNotificationsByFormId($form_id); 
             
             // NOTE: The actual sendTransactionStatusEmail for 'approved' is handled INSIDE Transaction::approveForm. 
-            
+            // We rely on that single, correct call.
+
             $message = "✅ Borrow request approved successfully! Items marked as borrowed.";
             $is_success = true;
         } elseif ($result === 'stock_mismatch_on_approval') {
@@ -120,8 +125,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         
         $message = "Borrow request rejected.";
         $is_success = true;
-
-        // --- EMAIL ONLY (Using the consistently fetched date variables) ---
+        
+        // **REMOVE REDUNDANCY FIX:** Only keep the Mailer call.
+        
+        // --- EMAIL ONLY (Rejected) ---
         if ($student_email) {
             $mailer->sendTransactionStatusEmail(
                 $student_email, 
@@ -135,6 +142,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $item_list_for_email
             );
         }
+        // --- System Notification (Keeping internal notification for rejection) ---
+        insertStudentNotification($db_conn, $student_id_to_notify, 'form_rejected', "Your request #{$form_id} has been rejected.", $student_link);
+
         // ------------------
         
     } elseif (isset($_POST["approve_return"])) {
@@ -144,7 +154,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             // CRITICAL FIX: Clear the notification for this form_id
             $transaction->clearNotificationsByFormId($form_id); 
             
-            // --- EMAIL ONLY (Using the consistently fetched date variables) ---
+            // **REMOVE REDUNDANCY FIX:** Only keep the Mailer call.
+
+            // --- EMAIL ONLY (Returned/Good) ---
             if ($student_email) {
                 // Since this is confirming return (good condition), we use the actual return date as approval date
                 $actual_return_date = date('Y-m-d');
@@ -154,12 +166,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $form_id, 
                     'returned', // Using 'returned' status for the email template
                     $remarks, 
-                    $request_date, // ADDED
-                    $expected_return_date, // ADDED
+                    $request_date, 
+                    $expected_return_date, 
                     $actual_return_date, // Using actual return date here
-                    $item_list_for_email // ADDED
+                    $item_list_for_email 
                 );
             }
+            // --- System Notification (Keeping internal notification for return confirmation) ---
+            insertStudentNotification($db_conn, $student_id_to_notify, 'return_confirmed_good', "Your return for request #{$form_id} was confirmed in good condition.", $student_link);
+
             // ------------------
             
             $message = "✅ Return verified and marked as returned.";
@@ -181,8 +196,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $message = "✅ Late return confirmed and status finalized as RETURNED (Penalty Applied).";
                     $is_success = true;
                     
-                    // --- STUDENT NOTIFICATION & EMAIL (Using the consistently fetched date variables) ---
+                    // **REMOVE REDUNDANCY FIX:** Only keep the Mailer call.
+                    
+                    // --- STUDENT NOTIFICATION & EMAIL (Confirmed Late) ---
+                    // We must update this call to ONLY be the system notification, if the double email is coming from here.
                     insertStudentNotification($db_conn, $student_id_to_notify, 'return_late', "Your late return for request #{$form_id} was confirmed.", $student_link); 
+                    
                     if ($student_email) {
                         $actual_return_date = date('Y-m-d');
                         $mailer->sendTransactionStatusEmail(
@@ -191,10 +210,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             $form_id, 
                             'returned', // Using 'returned' status for the email template
                             $remarks . " (Note: This was a late return.)",
-                            $request_date, // ADDED
-                            $expected_return_date, // ADDED
+                            $request_date, 
+                            $expected_return_date, 
                             $actual_return_date, // Using actual return date here
-                            $item_list_for_email // ADDED
+                            $item_list_for_email 
                         );
                     }
                     // ------------------------------------
@@ -215,7 +234,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $message = "✅ Marked as returned with issues. Damaged unit status updated.";
                 $is_success = true;
                 
-                // --- STUDENT NOTIFICATION & EMAIL (Using the consistently fetched date variables) ---
+                // **REMOVE REDUNDANCY FIX:** Only keep the Mailer call.
+
+                // --- STUDENT NOTIFICATION & EMAIL (Damaged) ---
                 insertStudentNotification($db_conn, $student_id_to_notify, 'return_damaged', "A unit from request #{$form_id} was marked damaged/returned with issues.", $student_link);
                 if ($student_email) {
                     $actual_return_date = date('Y-m-d');
@@ -225,10 +246,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         $form_id, 
                         'damaged', // Using 'damaged' status for the email template
                         $remarks,
-                        $request_date, // ADDED
-                        $expected_return_date, // ADDED
+                        $request_date, 
+                        $expected_return_date, 
                         $actual_return_date, // Using actual return date here
-                        $item_list_for_email // ADDED
+                        $item_list_for_email 
                     );
                 }
                 // ------------------------------------
@@ -250,7 +271,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $message = "✅ Marked as overdue (Units restored & ban checked).";
                     $is_success = true;
 
-                    // --- STUDENT NOTIFICATION & EMAIL (Using the consistently fetched date variables) ---
+                    // **REMOVE REDUNDANCY FIX:** Only keep the Mailer call.
+                    
+                    // --- STUDENT NOTIFICATION & EMAIL (Overdue) ---
                     insertStudentNotification($db_conn, $student_id_to_notify, 'form_overdue', "Your request #{$form_id} was marked OVERDUE. Your account is suspended.", $student_link);
                     if ($student_email) {
                         $mailer->sendTransactionStatusEmail(
@@ -259,10 +282,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             $form_id, 
                             'overdue', // Using 'overdue' status for the email template
                             $remarks,
-                            $request_date, // ADDED
-                            $expected_return_date, // ADDED
+                            $request_date, 
+                            $expected_return_date, 
                             '', // No approval date for overdue
-                            $item_list_for_email // ADDED
+                            $item_list_for_email 
                         );
                     }
                     // ------------------------------------

@@ -212,133 +212,154 @@ class Mailer {
      * Sends updates for form submission, approval, or rejection.
      * FIX APPLIED: Signature updated to accept 9 arguments including itemsList.
      */
-    public function sendTransactionStatusEmail($recipientEmail, $recipientName, $formId, $status, $remarks = null, $requestDate = '', $dueDate = '', $approvalDate = '', array $itemsList = []) {
-        try {
-            $this->mail->clearAddresses();
-            $this->mail->addAddress($recipientEmail, $recipientName);
+   // File: classes/Mailer.php (Replace the entire function)
 
-            $statusText = ucwords(str_replace('_', ' ', $status));
-            $subject = "Update: Request #{$formId} is {$statusText}";
-            $cleanRemarks = $remarks ? nl2br(htmlspecialchars($remarks)) : 'No specific remarks were provided by staff.';
-            
-            // --- 1. DETERMINE DYNAMIC CONTENT AND STYLING IN PHP (UNCHANGED) ---
-            $dynamic_message = '';
-            $status_css_class = 'status-waiting'; 
-            $status_bg = '#fff3cd'; 
-            $status_color = '#856404'; 
-            $template_file = 'body_status';
+/**
+ * Sends updates for form submission, approval, or rejection.
+ * FIX APPLIED: Robust date parsing using strtotime() checks.
+ */
+public function sendTransactionStatusEmail($recipientEmail, $recipientName, $formId, $status, $remarks = null, $requestDate = '', $dueDate = '', $approvalDate = '', array $itemsList = []) {
+    try {
+        $this->mail->clearAddresses();
+        $this->mail->addAddress($recipientEmail, $recipientName);
 
-            switch ($status) {
-                case 'approved':
-                    $dynamic_message = 'The staff has **APPROVED** your request! You may proceed to collect the apparatus on the scheduled borrow date.';
-                    $status_css_class = 'status-approved';
-                    $status_bg = '#d4edda'; // Light Green
-                    $status_color = '#155724'; // Dark Green
-                    break;
-                case 'rejected':
-                    $dynamic_message = 'Your request has been **REJECTED**. Please review the remarks below for the reason and submit a new request.';
-                    $status_css_class = 'status-rejected';
-                    $status_bg = '#f8d7da'; // Light Red
-                    $status_color = '#721c24'; // Dark Red
-                    break;
-                case 'waiting_for_approval': 
-                case 'returned': // Handle 'returned' status for emails from staff_pending
-                case 'damaged':  // Handle 'damaged' status
-                case 'overdue': // Handle 'overdue' status
-                default:
-                    $dynamic_message = 'Your submission has been successfully received and is **awaiting staff review**. You will receive another email once your request is approved or rejected.';
-                    $status_css_class = 'status-waiting'; 
-                    $status_bg = '#fff3cd'; // Light Yellow
-                    $status_color = '#856404'; // Dark Yellow
-                    // Re-adjust style if specific status is known from staff_pending calls
-                    if ($status == 'rejected' || $status == 'overdue') {
-                        $status_bg = '#f8d7da'; $status_color = '#721c24';
-                    } elseif ($status == 'returned' || $status == 'damaged') {
-                        $status_bg = '#d4edda'; $status_color = '#155724';
-                        $dynamic_message = "Your transaction has been finalized as **{$statusText}**.";
-                    }
-                    break;
-            }
-            
-            // 2. Generate the Status Box HTML (UNCHANGED)
-            $finalStatusDisplay = strtoupper($statusText); 
+        $statusText = ucwords(str_replace('_', ' ', $status));
+        $subject = "Update: Request #{$formId} is {$statusText}";
+        $cleanRemarks = $remarks ? nl2br(htmlspecialchars($remarks)) : 'No specific remarks were provided by staff.';
+        
+        // --- 1. DETERMINE DYNAMIC CONTENT AND STYLING (Unchanged) ---
+        $dynamic_message = '';
+        $status_css_class = 'status-waiting'; 
+        $status_bg = '#fff3cd'; 
+        $status_color = '#856404'; 
+        $template_file = 'body_status';
 
-            $statusBoxHtml = "
-                <div style=\"background-color: {$status_bg}; color: {$status_color}; padding: 15px; border: 1px solid {$status_color}; border-radius: 4px; font-weight: bold; text-align: center; font-size: 1.1em;\">
-                    TRANSACTION STATUS: **{$finalStatusDisplay}**
-                </div>
-            ";
-            
-            // 3. Generate the Item List HTML (NEW)
-            $itemTableHtml = '';
-            if (!empty($itemsList)) {
-                $itemRows = '';
-                foreach ($itemsList as $item) {
-                    // Combine name and type, handling cases where they might be missing
-                    $apparatusName = htmlspecialchars($item['name'] ?? 'N/A');
-                    $apparatusType = htmlspecialchars($item['apparatus_type'] ?? '');
-                    $quantity = htmlspecialchars($item['quantity'] ?? '1');
-                    
-                    $nameDisplay = $apparatusName;
-                    if (!empty($apparatusType)) {
-                        $nameDisplay .= " ({$apparatusType})";
-                    }
-
-                    $itemRows .= '
-                        <tr>
-                            <td style="padding: 8px 15px; border-bottom: 1px solid #eee;">' . $nameDisplay . '</td>
-                            <td style="padding: 8px 15px; border-bottom: 1px solid #eee; text-align: right;">' . $quantity . '</td>
-                        </tr>
-                    ';
+        switch ($status) {
+            case 'approved':
+                $dynamic_message = 'The staff has **APPROVED** your request! You may proceed to collect the apparatus on the scheduled borrow date.';
+                $status_css_class = 'status-approved';
+                $status_bg = '#d4edda'; // Light Green
+                $status_color = '#155724'; // Dark Green
+                break;
+            case 'rejected':
+                $dynamic_message = 'Your request has been **REJECTED**. Please review the remarks below for the reason and submit a new request.';
+                $status_css_class = 'status-rejected';
+                $status_bg = '#f8d7da'; // Light Red
+                $status_color = '#721c24'; // Dark Red
+                break;
+            case 'waiting_for_approval': 
+            case 'returned': 
+            case 'damaged': 
+            case 'overdue': 
+            default:
+                $dynamic_message = 'Your submission has been successfully received and is **awaiting staff review**. You will receive another email once your request is approved or rejected.';
+                $status_css_class = 'status-waiting'; 
+                $status_bg = '#fff3cd'; // Light Yellow
+                $status_color = '#856404'; // Dark Yellow
+                if ($status == 'rejected' || $status == 'overdue') {
+                    $status_bg = '#f8d7da'; $status_color = '#721c24';
+                } elseif ($status == 'returned' || $status == 'damaged') {
+                    $status_bg = '#d4edda'; $status_color = '#155724';
+                    $dynamic_message = "Your transaction has been finalized as **{$statusText}**.";
                 }
-                $itemTableHtml = '
-                    <h3 style="margin-top: 25px; margin-bottom: 10px; color: #333;">Requested Items</h3>
-                    <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; border: 1px solid #ddd; background-color: #f9f9f9;">
-                        <thead>
-                            <tr>
-                                <th style="padding: 10px 15px; text-align: left; border-bottom: 2px solid #ddd; background-color: #e9ecef;">Apparatus Name / Type</th>
-                                <th style="padding: 10px 15px; text-align: right; border-bottom: 2px solid #ddd; background-color: #e9ecef; width: 80px;">Quantity</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ' . $itemRows . '
-                        </tbody>
-                    </table>
+                break;
+        }
+        
+        // 2. Generate the Status Box HTML (Unchanged)
+        $finalStatusDisplay = strtoupper($statusText); 
+        $statusBoxHtml = "
+            <div style=\"background-color: {$status_bg}; color: {$status_color}; padding: 15px; border: 1px solid {$status_color}; border-radius: 4px; font-weight: bold; text-align: center; font-size: 1.1em;\">
+                TRANSACTION STATUS: **{$finalStatusDisplay}**
+            </div>
+        ";
+        
+        // 3. Generate the Item List HTML (Unchanged)
+        $itemTableHtml = '';
+        if (!empty($itemsList)) {
+            $itemRows = '';
+            foreach ($itemsList as $item) {
+                $apparatusName = htmlspecialchars($item['name'] ?? 'N/A');
+                $apparatusType = htmlspecialchars($item['apparatus_type'] ?? '');
+                $quantity = htmlspecialchars($item['quantity'] ?? '1');
+                
+                $nameDisplay = $apparatusName;
+                if (!empty($apparatusType)) {
+                    $nameDisplay .= " ({$apparatusType})";
+                }
+
+                $itemRows .= '
+                    <tr>
+                        <td style="padding: 8px 15px; border-bottom: 1px solid #eee;">' . $nameDisplay . '</td>
+                        <td style="padding: 8px 15px; border-bottom: 1px solid #eee; text-align: right;">' . $quantity . '</td>
+                    </tr>
                 ';
             }
-
-            // 4. Define variables for template injection
-            $variables = [
-                'SUBJECT' => $subject,
-                'RECIPIENT_NAME' => $recipientName,
-                'FORM_ID' => $formId,
-                'STATUS_TEXT' => $statusText, 
-                'DYNAMIC_MESSAGE' => $dynamic_message, 
-                'STATUS_CLASS' => $status_css_class,
-                'REMARKS' => $cleanRemarks,
-                
-                // --- FIX: Populate dates with robust checks ---
-                'REQUEST_DATE' => $requestDate ? date('F j, Y', strtotime($requestDate)) : 'N/A',
-                'DUE_DATE' => $dueDate ? date('F j, Y', strtotime($dueDate)) : 'N/A',
-                'APPROVAL_DATE' => $approvalDate ? date('F j, Y', strtotime($approvalDate)) : '',
-                
-                'STATUS_BOX_HTML' => $statusBoxHtml, 
-                'ITEM_TABLE_HTML' => $itemTableHtml, 
-            ];
-
-            $bodyHtml = $this->loadTemplate($template_file, $variables);
-            
-            $this->mail->Subject = $subject;
-            $this->mail->Body = $bodyHtml;
-            $this->mail->AltBody = "Your request #{$formId} status has been updated to {$statusText}.";
-
-            return $this->mail->send();
-        } catch (Exception $e) {
-            $this->last_error = $this->mail->ErrorInfo;
-            error_log("Status Email failed for {$recipientEmail} (Form #{$formId}). Mailer Error: {$this->last_error}");
-            return false;
+            $itemTableHtml = '
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #333;">Requested Items</h3>
+                <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; border: 1px solid #ddd; background-color: #f9f9f9;">
+                    <thead>
+                        <tr>
+                            <th style="padding: 10px 15px; text-align: left; border-bottom: 2px solid #ddd; background-color: #e9ecef;">Apparatus Name / Type</th>
+                            <th style="padding: 10px 15px; text-align: right; border-bottom: 2px solid #ddd; background-color: #e9ecef; width: 80px;">Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ' . $itemRows . '
+                    </tbody>
+                </table>
+            ';
         }
+
+        // --- 4. FORMAT DATES ROBUSTLY (CRITICAL FIX FOR N/A) ---
+        
+        $reqDateFormatted = 'N/A';
+        // Only attempt formatting if the variable exists and strtotime can parse it
+        if (!empty($requestDate) && ($ts = strtotime($requestDate)) !== false) {
+            $reqDateFormatted = date('F j, Y', $ts);
+        }
+
+        $dueDateFormatted = 'N/A';
+        if (!empty($dueDate) && ($ts = strtotime($dueDate)) !== false) {
+            $dueDateFormatted = date('F j, Y', $ts);
+        }
+        
+        $approvalDateFormatted = '';
+        if (!empty($approvalDate) && ($ts = strtotime($approvalDate)) !== false) {
+            $approvalDateFormatted = date('F j, Y', $ts);
+        }
+        
+        // 5. Define variables for template injection
+        $variables = [
+            'SUBJECT' => $subject,
+            'RECIPIENT_NAME' => $recipientName,
+            'FORM_ID' => $formId,
+            'STATUS_TEXT' => $statusText, 
+            'DYNAMIC_MESSAGE' => $dynamic_message, 
+            'STATUS_CLASS' => $status_css_class,
+            'REMARKS' => $cleanRemarks,
+            
+            // --- Use the robustly formatted dates ---
+            'REQUEST_DATE' => $reqDateFormatted,
+            'DUE_DATE' => $dueDateFormatted,
+            'APPROVAL_DATE' => $approvalDateFormatted,
+            
+            'STATUS_BOX_HTML' => $statusBoxHtml, 
+            'ITEM_TABLE_HTML' => $itemTableHtml, 
+        ];
+
+        $bodyHtml = $this->loadTemplate($template_file, $variables);
+        
+        $this->mail->Subject = $subject;
+        $this->mail->Body = $bodyHtml;
+        $this->mail->AltBody = "Your request #{$formId} status has been updated to {$statusText}.";
+
+        return $this->mail->send();
+    } catch (Exception $e) {
+        $this->last_error = $this->mail->ErrorInfo;
+        error_log("Status Email failed for {$recipientEmail} (Form #{$formId}). Mailer Error: {$this->last_error}");
+        return false;
     }
+}
     
     public function sendReturnConfirmationEmail(
         $recipientEmail, 
