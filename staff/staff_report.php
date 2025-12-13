@@ -11,10 +11,11 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'staff') {
 $transaction = new Transaction();
 
 // --- Determine Mode and Report Type ---
-$mode = $_GET['mode'] ?? 'hub'; 
-$report_view_type = $_GET['report_view_type'] ?? 'all'; 
+$mode = $_GET['mode'] ?? 'hub';
+$report_view_type = $_GET['report_view_type'] ?? 'all';
 
-// --- Helper Functions (Retained) ---
+// --- Helper Functions ---
+
 function isOverdue($expected_return_date) {
     if (!$expected_return_date) return false;
     $expected_date = new DateTime($expected_return_date);
@@ -23,83 +24,109 @@ function isOverdue($expected_return_date) {
 }
 
 /**
- * Helper to fetch and format apparatus list for display, including individual item status.
+ * Helper to generate status badge for history table.
+ * This now handles ITEM status display in the new layout.
  */
-function getFormItemsText($form_id, $transaction) {
-    $items = $transaction->getFormItems($form_id); 
-    if (empty($items)) return 'N/A';
-    $output = '';
-    
-    // Default Hub View (Showing status tags with color)
-    foreach ($items as $item) {
-        $name = htmlspecialchars($item['name'] ?? 'Unknown');
-        $item_status = strtolower($item['item_status'] ?? 'pending');
-        $quantity = $item['quantity'] ?? 1;
-
-        $tag_class = 'bg-secondary'; 
-        $tag_text = ucfirst(str_replace('_', ' ', $item_status));
-        
-        if ($item_status === 'damaged') {
-             $tag_class = 'bg-dark-monochrome'; 
-             $tag_text = 'Damaged';
-        } elseif ($item_status === 'returned') {
-             $tag_class = 'bg-success'; 
-             $tag_text = 'Returned';
-        } elseif ($item_status === 'overdue') {
-             $tag_class = 'bg-danger'; 
-             $tag_text = 'Overdue';
-        } elseif ($item_status === 'borrowed') {
-             $tag_class = 'bg-primary'; 
-        }
-        
-        $output .= '<div class="d-flex align-items-center justify-content-between my-1">';
-        $output .= '<span class="me-2">' . $name . ' (x' . $quantity . ')</span>';
-        $output .= '<span class="badge ' . $tag_class . '">' . $tag_text . '</span>';
-        $output .= '</div>';
-    }
-    return $output;
-}
-
-
-/**
- * Helper to generate status badge for history table. 
- */
-function getStatusBadge(array $form) {
-    // Hub view: HTML badge output (with color)
-    $status = $form['status'];
+function getStatusBadgeForItem(string $status, bool $is_late_return = false) {
     $clean_status = strtolower(str_replace(' ', '_', $status));
     $display_status = ucfirst(str_replace('_', ' ', $clean_status));
     
     $color_map = [
         'returned' => 'success', 'approved' => 'info', 'borrowed' => 'primary',
-        'overdue' => 'danger', 'damaged' => 'dark-monochrome', 'rejected' => 'secondary',
-        'waiting_for_approval' => 'warning'
+        'overdue' => 'danger', 'damaged' => 'danger', 'rejected' => 'secondary',
+        'waiting_for_approval' => 'warning', 'lost' => 'dark'
     ];
     $color = $color_map[$clean_status] ?? 'secondary';
     
-    if ($status === 'returned' && isset($form['is_late_return']) && $form['is_late_return'] == 1) {
-        $color = 'danger'; 
-        $display_status = 'LATE';
+    if ($clean_status === 'returned' && $is_late_return) {
+        $color = 'danger';
+        $display_status = 'Returned (LATE)';
+    } elseif ($clean_status === 'damaged') {
+        $display_status = 'Damaged';
+    } elseif ($clean_status === 'rejected') {
+        $display_status = 'Rejected';
     }
 
+    // This badge HTML is what we need to style differently in mobile CSS
     return '<span class="badge bg-' . $color . '">' . $display_status . '</span>';
 }
 
+/**
+ * NEW FUNCTION: Flattens the forms into item-rows for the Detailed History Table.
+ */
+function getDetailedItemRows(array $forms, $transaction) {
+    $rows = [];
+    foreach ($forms as $form) {
+        $form_id = $form['id'];
+        $detailed_items = $transaction->getFormItems($form_id);
 
-// --- Data Retrieval and Filtering Logic (Retained) ---
+        if (empty($detailed_items)) {
+            // Handle early rejected/pending forms that have no items attached yet (or item data is missing)
+            $detailed_items = [
+                ['name' => '-',
+                'quantity' => 1,
+                'item_status' => $form['status'], // Use form status as fallback
+                'is_late_return' => $form['is_late_return'] ?? 0]
+            ];
+        }
 
-$allApparatus = $transaction->getAllApparatus(); 
-$allForms = $transaction->getAllForms(); 
+        // Loop through the items (or the single placeholder if empty)
+        foreach ($detailed_items as $index => $item) {
+            
+            // Determine the Item-Specific Status
+            $item_status = strtolower($item['item_status'] ?? $form['status']);
+            $is_late_return = $item['is_late_return'] ?? ($form['is_late_return'] ?? 0);
+            
+            // Build the table row data based on item details
+            $row = [
+                'form_id' => $form['id'],
+                'student_id' => $form['user_id'],
+                'borrower_name' => htmlspecialchars($form['firstname'] . ' ' . $form['lastname']),
+                'form_type' => htmlspecialchars(ucfirst($form['form_type'])),
+                
+                'status_badge' => getStatusBadgeForItem($item_status, (bool)$is_late_return),
+                
+                'borrow_date' => htmlspecialchars($form['borrow_date'] ?? 'N/A'),
+                'expected_return' => htmlspecialchars($form['expected_return_date'] ?? 'N/A'),
+                'actual_return' => htmlspecialchars($form['actual_return_date'] ?? '-'),
+                
+                'apparatus' => htmlspecialchars($item['name'] ?? '-') . ' (x' . ($item['quantity'] ?? 1) . ')',
+                
+                'is_first_item' => ($index === 0),
+            ];
+            $rows[] = $row;
+        }
+    }
+    return $rows;
+}
+
+
+// --- Data Retrieval and Filtering Logic ---
+
+$allApparatus = $transaction->getAllApparatus();
+$allForms = $transaction->getAllForms();
 
 $apparatus_filter_id = $_GET['apparatus_id'] ?? '';
 $start_date = $_GET['start_date'] ?? '';
 $end_date = $_GET['end_date'] ?? '';
-$status_filter = $_GET['status_filter'] ?? ''; 
-$form_type_filter = $_GET['form_type_filter'] ?? ''; 
+$status_filter = $_GET['status_filter'] ?? '';
+$form_type_filter = $_GET['form_type_filter'] ?? '';
+$type_filter = $_GET['type_filter'] ?? ''; // Apparatus Type Filter
 
-$filteredForms = $allForms; 
+$filteredForms = $allForms;
+$filteredApparatus = $allApparatus; // Initialize apparatus filter
 
-// Apply Filtering Logic 
+// Apply Apparatus Filtering Logic (for the detailed inventory list)
+if ($type_filter) {
+    $type_filter_lower = strtolower($type_filter);
+    $filteredApparatus = array_filter($filteredApparatus, fn($a) =>
+        // CORRECTED: Checking for 'apparatus_type' instead of 'type'
+        isset($a['apparatus_type']) && strtolower(trim($a['apparatus_type'])) === $type_filter_lower
+    );
+}
+
+
+// Apply Filtering Logic for Forms
 if ($start_date) {
     $start_dt = new DateTime($start_date);
     $filteredForms = array_filter($filteredForms, fn($f) => (new DateTime($f['created_at']))->format('Y-m-d') >= $start_dt->format('Y-m-d'));
@@ -131,10 +158,10 @@ if ($status_filter) {
     if ($status_filter === 'overdue') {
         $filteredForms = array_filter($filteredForms, fn($f) => ($f['status'] === 'borrowed' || $f['status'] === 'approved') && isOverdue($f['expected_return_date']));
     } elseif ($status_filter === 'late_returns') {
-         $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] === 'returned' && ($f['is_late_return'] ?? 0) == 1);
-    } elseif ($status_filter === 'returned') { 
-         $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] === 'returned' && ($f['is_late_return'] ?? 0) == 0);
-    } elseif ($status_filter === 'borrowed_reserved') { 
+        $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] === 'returned' && ($f['is_late_return'] ?? 0) == 1);
+    } elseif ($status_filter === 'returned') {
+        $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] === 'returned' && ($f['is_late_return'] ?? 0) == 0);
+    } elseif ($status_filter === 'borrowed_reserved') {
         $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] !== 'waiting_for_approval' && $f['status'] !== 'rejected');
     } elseif ($status_filter !== 'all') {
         $filteredForms = array_filter($filteredForms, fn($f) => strtolower(str_replace('_', ' ', $f['status'])) === strtolower(str_replace('_', ' ', $status_filter)));
@@ -142,9 +169,10 @@ if ($status_filter) {
 }
 
 
-// --- Data Assignments for Hub View (Retained) ---
+// --- Data Assignments for Hub View ---
 
-$reportForms = $filteredForms; 
+// Flatten the filtered forms into item-rows for the detailed report display
+$detailedItemRows = getDetailedItemRows($filteredForms, $transaction);
 
 $totalForms = count($allForms);
 $pendingForms = count(array_filter($allForms, fn($f) => $f['status'] === 'waiting_for_approval'));
@@ -153,12 +181,12 @@ $borrowedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'borro
 $returnedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'returned'));
 $damagedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'damaged'));
 
-$overdueFormsList = array_filter($allForms, fn($f) => 
+$overdueFormsList = array_filter($allForms, fn($f) =>
     ($f['status'] === 'borrowed' || $f['status'] === 'approved') && isOverdue($f['expected_return_date'])
 );
 $overdueFormsCount = count($overdueFormsList);
 
-$totalApparatusCount = 0; 
+$totalApparatusCount = 0;
 $availableApparatusCount = 0;
 $damagedApparatusCount = 0;
 $lostApparatusCount = 0;
@@ -168,6 +196,10 @@ foreach ($allApparatus as $app) {
     $damagedApparatusCount += (int)$app['damaged_stock'];
     $lostApparatusCount += (int)$app['lost_stock'];
 }
+
+// Get unique apparatus types for the filter dropdown
+// CORRECTED: Getting unique values from 'apparatus_type' column
+$uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type'));
 
 ?>
 
@@ -180,27 +212,27 @@ foreach ($allApparatus as $app) {
     <title>Staff Reports Hub - WMSU CSM</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         
         :root {
-            --msu-red: #A40404; /* FIXED to consistent staff/student red */
-            --msu-red-dark: #820303; /* FIXED to consistent dark red */
+            --msu-red: #A40404;
+            --msu-red-dark: #820303;
             --msu-blue: #007bff;
             --sidebar-width: 280px;
-            --header-height: 60px; /* ADDED for top bar */
-            --student-logout-red: #C62828; /* FIXED to consistent base red */
+            --header-height: 60px;
+            --student-logout-red: #C62828;
             --base-font-size: 15px;
-            --main-text: #333; /* ADDED for top bar */
+            --main-text: #333;
             --label-bg: #e9ecef;
             --card-background: #fcfcfc;
         }
 
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: #f5f6fa; 
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f6fa;
             min-height: 100vh;
-            display: flex; 
+            display: flex;
             padding: 0;
             margin: 0;
             font-size: var(--base-font-size);
@@ -209,21 +241,59 @@ foreach ($allApparatus as $app) {
 
         /* NEW CSS for Mobile Toggle */
         .menu-toggle {
-            display: none; /* Hidden on desktop */
             position: fixed;
             top: 15px;
-            left: 20px;
-            z-index: 1060; 
+            left: calc(var(--sidebar-width) + 20px);
+            z-index: 1060;
             background: var(--msu-red);
             color: white;
             border: none;
-            padding: 8px 12px;
             border-radius: 6px;
             font-size: 1.2rem;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: left 0.3s ease;
+            
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 44px;
+            height: 44px;
+        }
+        
+        /* NEW CLASS: When sidebar is closed (Desktop collapse mode) */
+        .sidebar.closed {
+            left: calc(var(--sidebar-width) * -1);
+        }
+        .sidebar.closed ~ .menu-toggle {
+            left: 20px;
+        }
+        .sidebar.closed ~ .top-header-bar {
+            left: 0;
+        }
+        .sidebar.closed ~ .main-content {
+            margin-left: 0;
+            width: 100%;
         }
 
-        /* --- Top Header Bar Styles (ADDED) --- */
+        /* NEW: Backdrop for mobile sidebar */
+        .sidebar-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .sidebar.active ~ .sidebar-backdrop {
+            display: block;
+            opacity: 1;
+        }
+
+        /* --- Top Header Bar Styles --- */
         .top-header-bar {
             position: fixed;
             top: 0;
@@ -235,13 +305,14 @@ foreach ($allApparatus as $app) {
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
             display: flex;
             align-items: center;
-            justify-content: flex-end; /* Align content to the right */
-            padding: 0 30px; 
+            justify-content: flex-end;
+            padding: 0 30px;
             z-index: 1000;
+            transition: left 0.3s ease;
         }
         .notification-bell-container {
             position: relative;
-            list-style: none; 
+            list-style: none;
             padding: 0;
             margin: 0;
         }
@@ -251,11 +322,11 @@ foreach ($allApparatus as $app) {
         }
         .notification-bell-container .badge-counter {
             position: absolute;
-            top: 5px; 
+            top: 5px;
             right: 0px;
-            font-size: 0.8em; 
+            font-size: 0.8em;
             padding: 0.35em 0.5em;
-            background-color: #ffc107; 
+            background-color: #ffc107;
             color: var(--main-text);
             font-weight: bold;
         }
@@ -275,8 +346,6 @@ foreach ($allApparatus as $app) {
             text-align: center;
             border-top: 1px solid #eee;
         }
-        /* --- END Top Header Bar Styles --- */
-        
         
         .sidebar {
             width: var(--sidebar-width);
@@ -286,12 +355,13 @@ foreach ($allApparatus as $app) {
             color: white;
             padding: 0;
             box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
-            position: fixed; 
+            position: fixed;
             top: 0;
             left: 0;
             display: flex;
             flex-direction: column;
             z-index: 1010;
+            transition: left 0.3s ease;
         }
 
         .sidebar-header { text-align: center; padding: 25px 15px; font-size: 1.3rem; font-weight: 700; line-height: 1.2; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.4); margin-bottom: 25px; }
@@ -302,45 +372,45 @@ foreach ($allApparatus as $app) {
         .sidebar-nav .nav-link:hover { background-color: var(--msu-red-dark); }
         .sidebar-nav .nav-link.active { background-color: var(--msu-red-dark); }
         
-        .logout-link { 
-            margin-top: auto; 
-            border-top: 1px solid rgba(255, 255, 255, 0.1); 
-            width: 100%; 
-            background-color: var(--msu-red); 
+        .logout-link {
+            margin-top: auto;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            width: 100%;
+            background-color: var(--msu-red);
         }
-        .logout-link .nav-link { 
-            display: flex; 
+        .logout-link .nav-link {
+            display: flex;
             align-items: center;
-            justify-content: flex-start; 
-            background-color: var(--student-logout-red) !important; /* FIXED to consistent base red */
+            justify-content: flex-start;
+            background-color: var(--student-logout-red) !important;
             color: white !important;
-            padding: 18px 25px; 
-            border-radius: 0; 
+            padding: 18px 25px;
+            border-radius: 0;
             text-decoration: none;
-            font-weight: 600; 
-            font-size: 1.05rem; 
-            transition: background 0.3s; 
+            font-weight: 600;
+            font-size: 1.05rem;
+            transition: background 0.3s;
         }
-        .logout-link .nav-link:hover { 
-            background-color: var(--msu-red-dark) !important; /* FIXED to consistent dark hover color */
+        .logout-link .nav-link:hover {
+            background-color: var(--msu-red-dark) !important;
         }
 
         .main-content {
-            margin-left: var(--sidebar-width); 
+            margin-left: var(--sidebar-width);
             flex-grow: 1;
             padding: 30px;
-            /* CRITICAL: Adjusted for fixed header */
             padding-top: calc(var(--header-height) + 30px);
-            width: calc(100% - var(--sidebar-width)); 
+            width: calc(100% - var(--sidebar-width));
+            transition: margin-left 0.3s ease, width 0.3s ease;
         }
         .content-area {
-            background: #fff; 
-            border-radius: 12px; 
+            background: #fff;
+            border-radius: 12px;
             padding: 30px 40px;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
         }
         .page-header {
-            color: #333; 
+            color: #333;
             border-bottom: 2px solid var(--msu-red);
             padding-bottom: 15px;
             margin-bottom: 30px;
@@ -353,8 +423,8 @@ foreach ($allApparatus as $app) {
         .report-section {
             border: 1px solid #ddd;
             border-radius: 8px;
-            padding: 25px; 
-            margin-bottom: 35px; 
+            padding: 25px;
+            margin-bottom: 35px;
             background: #fff;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
         }
@@ -362,9 +432,9 @@ foreach ($allApparatus as $app) {
             color: var(--msu-red);
             padding-bottom: 10px;
             border-bottom: 1px dashed #eee;
-            margin-bottom: 25px; 
+            margin-bottom: 25px;
             font-weight: 600;
-            font-size: 1.5rem; 
+            font-size: 1.5rem;
         }
         
         /* --- Dashboard Stat Card Styling --- */
@@ -377,7 +447,7 @@ foreach ($allApparatus as $app) {
             padding: 15px 20px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             transition: all 0.2s;
-            height: 100%; 
+            height: 100%;
         }
         .stat-icon {
             display: flex;
@@ -401,54 +471,124 @@ foreach ($allApparatus as $app) {
             font-size: 0.9rem;
             color: #6c757d;
             font-weight: 500;
-            white-space: nowrap;
+            white-space: normal;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .bg-light-gray { background-color: #f9f9f9 !important; }
         .border-danger { border-left: 5px solid var(--student-logout-red) !important; }
 
-        /* Hide the stat tables which are only for print */
         .print-stat-table-container { display: none; }
         
         /* --- DETAILED HISTORY STYLES (Screen View) --- */
         
         .table-responsive {
             border-radius: 8px;
-            overflow-x: auto; 
+            overflow-x: auto;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            margin-top: 25px; 
+            margin-top: 25px;
         }
         .table {
-            min-width: 1200px; /* Adjust min width */
+            min-width: 1200px;
+            border-collapse: separate;
         }
         
         .table thead th {
+            /* FIX 3: Change table header color from solid black to dark red/gray */
             background-color: var(--msu-red);
             color: white;
-            font-weight: 700; 
+            font-weight: 700;
             vertical-align: middle;
-            font-size: 1rem; 
-            padding: 10px 5px; 
-            white-space: normal; 
+            font-size: 1rem;
+            padding: 10px 5px;
+            white-space: normal;
+            text-align: center;
         }
-        .table tbody td { 
+        .table tbody td {
             vertical-align: top;
-            padding-top: 8px; 
-            font-size: 1rem; 
+            padding: 8px 4px;
+            font-size: 1rem;
+            text-align: center;
+            border-bottom: 1px solid #e9ecef;
         }
+
+        /* --- New Styling for One-Item-Per-Row --- */
         
+        /* Apply strong border only to the first row of a new form group */
+        .table tbody tr.first-item-of-group td {
+            border-top: 2px solid #ccc;
+        }
+
+        /* Remove top border on the very first row of the table */
+        .table tbody tr:first-child.first-item-of-group td {
+            border-top: 0;
+        }
+
+        /* Set Item/Apparatus column styling */
         .detailed-items-cell {
-            white-space: normal !important; 
-            word-break: break-word; 
-            overflow: visible; 
+            white-space: normal !important;
+            word-break: break-word;
+            overflow: visible;
             text-align: left !important;
             padding-left: 10px !important;
         }
-        .detailed-items-cell .badge { margin-left: 5px; font-size: 0.85rem; font-weight: 700; }
-        .detailed-items-cell .d-flex { line-height: 1.4; font-size: 1rem; min-height: 1.5em; }
         
+        /* Hide unused styles for multi-line cells */
+        .detailed-items-cell .d-flex { display: block !important; }
+        .detailed-items-cell .badge { display: none !important; }
         
+        /* Define Column Widths for Report Table */
+        .table th:nth-child(1) { width: 6%; } /* Form ID */
+        .table th:nth-child(2) { width: 8%; } /* Student ID */
+        .table th:nth-child(3) { width: 14%; } /* Borrower Name */
+        .table th:nth-child(4) { width: 8%; } /* Type */
+        .table th:nth-child(5) { width: 10%; } /* Status */
+        .table th:nth-child(6) { width: 10%; } /* Borrow Date */
+        .table th:nth-child(7) { width: 12%; } /* Expected Return */
+        .table th:nth-child(8) { width: 10%; } /* Actual Return */
+        .table th:nth-child(9) { width: 22%; } /* Items Borrowed */
+        
+        /* --- Detailed Inventory Table Column Widths (6 Columns) --- */
+        .detailed-inventory-table {
+            min-width: 100%;
+        }
+        .detailed-inventory-table th:nth-child(1) { width: 30%; } /* Apparatus Name */
+        .detailed-inventory-table th:nth-child(2) { width: 20%; } /* Type */
+        .detailed-inventory-table th:nth-child(3) { width: 15%; } /* Total Stock */
+        .detailed-inventory-table th:nth-child(4) { width: 15%; } /* Available Stock */
+        .detailed-inventory-table th:nth-child(5) { width: 10%; } /* Damaged Stock (New) */
+        .detailed-inventory-table th:nth-child(6) { width: 10%; } /* Lost Stock (New) */
+
+
+        /* Status Badge Styling (Desktop/Default) */
+        .table tbody td .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 14px;
+            font-weight: 700;
+            text-transform: capitalize;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        
+        /* FIX 2: Override badge styling for the Inventory Table to remove circles/badges */
+        .detailed-inventory-table tbody td .badge {
+            /* This is targeting the badges in the inventory list. Remove background and border-radius. */
+            background-color: transparent !important;
+            color: var(--main-text) !important;
+            font-weight: 500 !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+            border: none !important;
+        }
+
+
+        /* Hide original styles for detailed table now that we use item rows */
+        .detailed-items-cell span {
+            display: block;
+            line-height: 1.4;
+        }
+
         /* --- PRINT STYLING (Monochrome & Unified) --- */
         
         .print-header { display: none; }
@@ -461,7 +601,7 @@ foreach ($allApparatus as $app) {
             
             /* Print Header */
             .print-header {
-                display: flex !important; 
+                display: flex !important;
                 flex-direction: column;
                 align-items: center;
                 text-align: center;
@@ -471,7 +611,7 @@ foreach ($allApparatus as $app) {
             }
             .wmsu-logo-print { display: block !important; width: 70px; height: auto; margin-bottom: 5px; }
             .print-header .logo { font-size: 0.9rem; font-weight: 600; margin-bottom: 2px; color: #555; }
-            .print-header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; color: #000; } 
+            .print-header h1 { font-size: 1.5rem; font-weight: 700; margin: 0; color: #000; }
             
             /* Unified Report Section Styling */
             .report-section { border: none !important; box-shadow: none !important; padding: 0; margin-bottom: 25px; }
@@ -487,37 +627,130 @@ foreach ($allApparatus as $app) {
             .print-stat-table tr:nth-child(even) td { background-color: #f9f9f9 !important; }
             
             /* Detailed History Table Styles */
-            body[data-print-view="detailed"] @page { size: A4 landscape; } 
+            body[data-print-view="detailed"] @page { size: A4 landscape; }
             .table thead th, .table tbody td { border: 1px solid #000 !important; padding: 6px !important; color: #000 !important; vertical-align: top !important; font-size: 0.85rem !important; }
             .table thead th { background-color: #eee !important; font-weight: 700 !important; white-space: normal; }
             .table tbody tr:nth-child(odd) { background-color: #f9f9f9 !important; }
             
-            .detailed-items-cell .badge { display: none !important; }
-            .detailed-items-cell .d-flex { display: block !important; margin: 0 !important; padding: 0 !important; font-size: 0.85rem !important; line-height: 1.1; border-bottom: 1px dotted #eee; }
-            .detailed-items-cell .d-flex:last-child { border-bottom: none; }
-
+            /* Custom print row grouping borders */
+            .table tbody tr.first-item-of-group td {
+                border-top: 1px solid #000 !important;
+            }
+            .table tbody tr:first-child.first-item-of-group td {
+                border-top: 1px solid #000 !important;
+            }
+            .table tbody tr td {
+                border-bottom: 1px solid #000 !important;
+            }
+            .table tbody tr:last-child td {
+                border-bottom: 1px solid #000 !important;
+            }
+            
             /* Status Badge - Set to Monochrome for print */
             .table tbody td .badge {
-                color: #000 !important; 
-                background-color: transparent !important; 
-                border: 1px solid #000; 
-                -webkit-print-color-adjust: exact; 
-                print-color-adjust: exact; 
+                color: #000 !important;
+                background-color: transparent !important;
+                border: 1px solid #000;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
                 box-shadow: none !important;
             }
+            
+            /* --- Detailed Apparatus Inventory List Print Layout (Updated for 6 Columns) --- */
+            
+            /* Force A4 Portrait for the apparatus list print */
+            body[data-print-view="apparatus_list"] @page { size: A4 portrait; }
 
+            .print-detailed-inventory .table-responsive {
+                overflow: visible !important; /* Ensure table is fully visible */
+            }
+
+            .detailed-inventory-table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                /* Remove screen-only min-width */
+                min-width: unset !important;
+            }
+
+            .detailed-inventory-table thead th,
+            .detailed-inventory-table tbody td {
+                border: 1px solid #000 !important;
+                padding: 8px 6px !important;
+                font-size: 0.9rem !important;
+                text-align: center !important;
+                vertical-align: middle !important;
+            }
+            
+            .detailed-inventory-table thead th {
+                background-color: #eee !important;
+                font-weight: 700 !important;
+            }
+            
+            /* Apparatus Name is left-aligned and bold */
+            .detailed-inventory-table tbody tr td:first-child {
+                text-align: left !important;
+                font-weight: 700;
+            }
+
+            /* Striped rows for better legibility */
+            .detailed-inventory-table tbody tr:nth-child(odd) {
+                background-color: #f9f9f9 !important;
+            }
+            .detailed-inventory-table tbody tr:nth-child(even) {
+                background-color: #ffffff !important;
+            }
+
+            /* Force column widths for a balanced view (6 columns) */
+            .detailed-inventory-table th:nth-child(1), .detailed-inventory-table td:nth-child(1) { width: 35% !important; } /* Apparatus Name */
+            .detailed-inventory-table th:nth-child(2), .detailed-inventory-table td:nth-child(2) { width: 20% !important; } /* Type */
+            .detailed-inventory-table th:nth-child(3), .detailed-inventory-table td:nth-child(3) { width: 10% !important; } /* Total Stock */
+            .detailed-inventory-table th:nth-child(4), .detailed-inventory-table td:nth-child(4) { width: 15% !important; } /* Available Stock */
+            .detailed-inventory-table th:nth-child(5), .detailed-inventory-table td:nth-child(5) { width: 10% !important; } /* Damaged Stock */
+            .detailed-inventory-table th:nth-child(6), .detailed-inventory-table td:nth-child(6) { width: 10% !important; } /* Lost Stock */
+
+
+            /* Re-add mobile table styling fixes for proper horizontal display in print */
+            .detailed-inventory-table, 
+            .print-detailed-inventory .table thead, 
+            .print-detailed-inventory .table tbody, 
+            .print-detailed-inventory .table tr { 
+                display: table !important; 
+                width: 100% !important;
+                margin-bottom: 0 !important;
+            }
+            .print-detailed-inventory .table td { 
+                display: table-cell !important;
+                padding: 6px !important; 
+                position: static !important;
+                border: 1px solid #000 !important;
+                text-align: center !important;
+            }
+            
+            /* Remove the mobile pseudo-element labels */
+            .print-detailed-inventory .table td::before { 
+                content: none !important; 
+            }
+            
+            .print-detailed-inventory .table tbody tr {
+                border: none !important; 
+                box-shadow: none !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+            
             /* Conditional Section Display (Crucial for Print Fix) */
             .print-target { display: none; }
             body[data-print-view="summary"] .print-summary,
             body[data-print-view="inventory"] .print-inventory,
             body[data-print-view="detailed"] .print-detailed,
+            body[data-print-view="apparatus_list"] .print-detailed-inventory, /* NEW PRINT TYPE */
             body[data-print-view="all"] .print-target { display: block !important; }
             body[data-print-view="summary"] .print-summary .print-stat-table-container,
             body[data-print-view="inventory"] .print-inventory .print-stat-table-container,
             body[data-print-view="all"] .print-summary .print-stat-table-container,
             body[data-print-view="all"] .print-inventory .print-stat-table-container { display: block !important; }
 
-             /* Force monochrome for colors */
+            /* Force monochrome for colors */
             .table * {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
@@ -526,32 +759,80 @@ foreach ($allApparatus as $app) {
 
         /* --- MOBILE RESPONSIVE CSS (Stacked Layout) --- */
 
-        /* 1. Mobile Sidebar Toggle & Layout Shift */
+        /* 1. New Intermediate Breakpoint for Laptops/Large Tablets */
+        @media (max-width: 1200px) {
+            /* Adjust Filter Form to stack elements two-up on large tablets/small laptops */
+            #report-filter-form .col-md-3 {
+                width: 50% !important;
+            }
+            #report-filter-form .col-md-6 {
+                width: 100% !important;
+            }
+            /* Tighten up stat card view */
+            .stat-card {
+                padding: 10px 15px;
+            }
+            .stat-icon {
+                width: 40px;
+                height: 40px;
+                font-size: 1.2rem;
+            }
+            .stat-value {
+                font-size: 1.4rem;
+            }
+            /* Adjust main table for slightly smaller landscape view */
+            .table {
+                min-width: 1000px;
+            }
+            .table thead th {
+                font-size: 0.9rem;
+            }
+        }
+
+        /* 2. Tablet Portrait and Smaller Laptop */
         @media (max-width: 992px) {
-            .menu-toggle { display: block; }
-            .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
+            /* Desktop/Tablet Toggle Position */
+            .menu-toggle {
+                display: flex;
+                left: 20px;
+            }
+            .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; }
             .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
             .main-content { margin-left: 0; padding-left: 15px; padding-right: 15px; padding-top: calc(var(--header-height) + 15px); }
             .top-header-bar { left: 0; padding-left: 70px; padding-right: 15px; }
             .content-area { padding: 20px 15px; }
             .page-header { font-size: 1.8rem; }
             
-            /* Filter form stacking */
-            #report-filter-form .row { margin: 0; }
-            #report-filter-form > .col-md-3,
-            #report-filter-form > .col-md-6 { width: 100% !important; margin-top: 15px !important; }
+            /* Filter form full stacking on 992px and below (tablet portrait) */
+            #report-filter-form .col-md-3,
+            #report-filter-form .col-md-6 { width: 100% !important; margin-top: 15px; }
+            #report-filter-form > div:first-child { margin-top: 0 !important; }
             .d-flex.justify-content-between.align-items-center { flex-direction: column; align-items: stretch !important; }
             .d-flex.justify-content-between.align-items-center > * { width: 100%; }
+            
+            /* Adjust stat cards to stack two-up */
+            .report-section .row > div {
+                width: 50% !important;
+            }
+            .report-section .row > div:nth-child(odd) {
+                padding-left: 0.375rem !important;
+            }
+            .report-section .row > div:nth-child(even) {
+                padding-right: 0.375rem !important;
+            }
+            .report-section .row { margin-left: -0.375rem !important; margin-right: -0.375rem !important; }
+            
         }
 
+        /* 3. Mobile Screens */
         @media (max-width: 768px) {
             .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
             .content-area { padding: 10px; }
 
-            /* Report Hub Card Styling */
-            .report-section .row > div { width: 100% !important; margin-bottom: 15px; }
+            /* Report Hub Card Styling: Force full stack */
+            .report-section .row > div { width: 100% !important; margin-bottom: 15px; padding: 0 0.75rem !important; }
             .report-section h3 { font-size: 1.3rem; }
-            .stat-card { border-left: 5px solid #ddd; } 
+            .stat-card { border-left: 5px solid #ddd; }
             .stat-label { font-size: 1rem; }
             .stat-value { font-size: 1.8rem; }
             
@@ -562,23 +843,29 @@ foreach ($allApparatus as $app) {
             .table tbody, .table tr, .table td { display: block; width: 100%; }
             
             .table tr {
-                margin-bottom: 15px; 
+                margin-bottom: 15px;
                 border: 1px solid #ccc;
-                border-left: 5px solid var(--msu-red);
-                border-radius: 8px; 
-                background-color: var(--card-background); 
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
-                padding: 0; 
+                /* 1. REMOVE RED BAR: Change to a subtle border */
+                border-left: 1px solid #ccc;
+                border-radius: 8px;
+                background-color: var(--card-background);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                padding: 0;
                 overflow: hidden;
             }
             
+            /* Remove desktop grouping borders on mobile */
+            .table tbody tr.first-item-of-group td {
+                border-top: none;
+            }
+
             .table td {
-                text-align: right !important; 
+                text-align: right !important;
                 padding-left: 50% !important;
                 position: relative;
                 border: none;
                 border-bottom: 1px solid #eee;
-                padding: 10px 10px !important; 
+                padding: 10px 10px !important;
             }
             .table td:last-child { border-bottom: none; }
 
@@ -586,17 +873,17 @@ foreach ($allApparatus as $app) {
             .table td::before {
                 content: attr(data-label);
                 position: absolute;
-                left: 0; 
+                left: 0;
                 width: 50%;
                 height: 100%;
                 padding: 10px;
                 white-space: nowrap;
                 text-align: left;
                 font-weight: 600;
-                color: var(--main-text); 
+                color: var(--main-text);
                 font-size: 0.9rem;
-                background-color: var(--label-bg); 
-                border-right: 1px solid #ddd;
+                background-color: transparent;
+                border-right: none;
                 display: flex;
                 align-items: center;
             }
@@ -612,7 +899,7 @@ foreach ($allApparatus as $app) {
                 border-bottom: 1px solid #ddd;
             }
             .table tbody tr td:nth-child(1)::before {
-                content: "Form "; 
+                content: "Form ";
                 background: none;
                 border: none;
                 color: #6c757d;
@@ -622,25 +909,34 @@ foreach ($allApparatus as $app) {
                 width: auto;
                 height: auto;
             }
-
-            .table tbody tr td:nth-child(3) { /* Borrower Name (Primary Detail) */
+            
+            .table tbody tr td:nth-child(3) {
                 font-size: 1rem;
                 font-weight: 700;
-                color: var(--msu-red-dark);
+                color: var(--main-text); /* MODIFIED: Set to dark gray/near black */
             }
             .table tbody tr td:nth-child(3)::before {
                 content: "Borrower Name";
-                background-color: #f8f8f8; 
-                color: var(--msu-red-dark);
+                background-color: #f8f8f8;
+                color: #000; /* MODIFIED: Changed from var(--msu-red-dark) to black (#000) */
                 font-weight: 700;
             }
             
-            .table tbody tr td:nth-child(10) { /* Items Borrowed - Full width block */
+            .table tbody tr td:nth-child(5) {
+                font-weight: 700;
+                /* 2. REMOVE YELLOW HIGHLIGHT ON STATUS: (CSS block below removed in previous step) */
+            }
+            
+            .table tbody tr td:nth-child(9) {
+                font-weight: 700;
+            }
+            
+            .table tbody tr td:nth-child(9) {
                 text-align: left !important;
                 padding-left: 10px !important;
-                border-bottom: none; /* Final item, no border */
+                border-bottom: none;
             }
-            .table tbody tr td:nth-child(10)::before {
+            .table tbody tr td:nth-child(9)::before {
                 content: "Items Borrowed";
                 position: static;
                 width: 100%;
@@ -652,10 +948,79 @@ foreach ($allApparatus as $app) {
                 padding: 10px;
                 margin-bottom: 5px;
             }
-            .detailed-items-cell .d-flex {
-                 /* Give inner item details better flow on small screen */
-                 flex-wrap: wrap; 
+            /* FIX: Item details need to stack cleanly inside the full-width block */
+            .detailed-items-cell span {
+                /* Ensure the apparatus text remains block for a clean list */
+                display: block !important;
+                padding: 5px 0;
             }
+            
+            /* 3. REMOVE PILL/CIRCLE AROUND STATUS: Override the badge styling for mobile */
+             .table tbody tr td:nth-child(5) .badge {
+                border-radius: 0 !important; /* Make it square */
+                background-color: transparent !important; /* Remove background color */
+                color: #333 !important; /* Set text color to default black/dark gray */
+                font-weight: 600 !important; /* Adjust font weight to look more like regular text */
+                padding: 0 !important;
+                border: none !important; /* Remove border */
+            }
+
+            /* Detailed Apparatus List: Fix for Mobile View (Needs to be a stacked card, not a table) */
+            .detailed-inventory-table thead { display: none; }
+            .detailed-inventory-table tbody, .detailed-inventory-table tr, .detailed-inventory-table td { 
+                display: block; 
+                width: 100%; 
+                padding: 0;
+            }
+            .detailed-inventory-table tr {
+                margin-bottom: 15px;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                padding: 0;
+                overflow: hidden;
+            }
+            .detailed-inventory-table td {
+                text-align: right !important;
+                padding-left: 50% !important;
+                position: relative;
+                border: none;
+                border-bottom: 1px solid #eee;
+                padding: 10px 10px !important;
+            }
+            .detailed-inventory-table td:last-child { border-bottom: none; }
+
+            /* Apparatus Name - Top Header */
+            .detailed-inventory-table tbody tr td:nth-child(1) {
+                text-align: left !important;
+                padding: 10px !important;
+                font-weight: 700;
+                font-size: 1.1rem;
+                color: var(--msu-red);
+                background-color: #f8f8f8;
+                border-bottom: 1px solid #ddd;
+            }
+            .detailed-inventory-table tbody tr td:nth-child(1)::before {
+                content: "Apparatus Name:";
+                background: none;
+                border: none;
+                color: #6c757d;
+                font-size: 0.9rem;
+                padding: 0;
+                position: static;
+                width: auto;
+                height: auto;
+                display: block;
+            }
+            
+            /* Mobile labels for other columns */
+            .detailed-inventory-table tbody tr td:nth-child(2)::before { content: "Type"; }
+            .detailed-inventory-table tbody tr td:nth-child(3)::before { content: "Total Stock"; }
+            .detailed-inventory-table tbody tr td:nth-child(4)::before { content: "Available Stock"; }
+            .detailed-inventory-table tbody tr td:nth-child(5)::before { content: "Damaged Stock"; } /* Updated */
+            .detailed-inventory-table tbody tr td:nth-child(6)::before { content: "Lost Stock"; } /* Added */
+
+
         }
         
         @media (max-width: 576px) {
@@ -672,7 +1037,7 @@ foreach ($allApparatus as $app) {
 
 <div class="sidebar">
     <div class="sidebar-header">
-        <img src="../wmsu_logo/wmsu.png" alt="WMSU Logo" class="img-fluid"> 
+        <img src="../wmsu_logo/wmsu.png" alt="WMSU Logo" class="img-fluid">
         <div class="title">
             CSM LABORATORY <br>APPARATUS BORROWING
         </div>
@@ -703,15 +1068,17 @@ foreach ($allApparatus as $app) {
     </div>
 </div>
 
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
 <header class="top-header-bar">
     <ul class="navbar-nav mb-2 mb-lg-0">
         <li class="nav-item dropdown notification-bell-container">
-            <a class="nav-link dropdown-toggle" href="#" id="alertsDropdown" role="button" 
+            <a class="nav-link dropdown-toggle" href="#" id="alertsDropdown" role="button"
                 data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-bell fa-lg"></i>
                 <span class="badge rounded-pill badge-counter" id="notification-bell-badge" style="display:none;"></span>
             </a>
-            <div class="dropdown-menu dropdown-menu-end shadow animated--grow-in" 
+            <div class="dropdown-menu dropdown-menu-end shadow animated--grow-in"
                 aria-labelledby="alertsDropdown" id="notification-dropdown">
                 <h6 class="dropdown-header text-center">New Requests</h6>
                 
@@ -731,14 +1098,15 @@ foreach ($allApparatus as $app) {
         </h2>
         
         <div class="print-header">
-            <img src="../wmsu_logo/wmsu.png" alt="WMSU Logo" class="wmsu-logo-print">
+            <img src="../wmsu_logo/wmsu.png" alt="WMSU Logo" class="img-fluid wmsu-logo-print">
             <div class="logo">WESTERN MINDANAO STATE UNIVERSITY</div>
             <div class="logo">CSM LABORATORY APPARATUS BORROWING SYSTEM</div>
             <h1>
-            <?php 
+            <?php
                 if ($report_view_type === 'summary') echo 'Transaction Status Summary Report';
                 elseif ($report_view_type === 'inventory') echo 'Apparatus Inventory Stock Report';
                 elseif ($report_view_type === 'detailed') echo 'Detailed Transaction History Report';
+                elseif ($report_view_type === 'apparatus_list') echo 'Detailed Apparatus Inventory List';
                 else echo 'All Reports Hub View';
             ?>
             </h1>
@@ -758,19 +1126,20 @@ foreach ($allApparatus as $app) {
                 <div class="col-md-3">
                     <label for="report_view_type_select" class="form-label">**Select Report View Type**</label>
                     <select name="report_view_type" id="report_view_type_select" class="form-select">
-                        <option value="all" <?= ($report_view_type === 'all') ? 'selected' : '' ?>>Print: All Sections (Hub View)</option>
-                        <option value="summary" <?= ($report_view_type === 'summary') ? 'selected' : '' ?>>Print: Transaction Summary Only</option>
-                        <option value="inventory" <?= ($report_view_type === 'inventory') ? 'selected' : '' ?>>Print: Apparatus Inventory Only</option>
-                        <option value="detailed" <?= ($report_view_type === 'detailed') ? 'selected' : '' ?>>Filter & Print: Detailed History</option>
+                        <option value="all" <?= ($report_view_type === 'all') ? 'selected' : '' ?>>View/Print: All Sections (Hub View)</option>
+                        <option value="summary" <?= ($report_view_type === 'summary') ? 'selected' : '' ?>>View/Print: Transaction Summary Only</option>
+                        <option value="inventory" <?= ($report_view_type === 'inventory') ? 'selected' : '' ?>>View/Print: Apparatus Stock Status</option>
+                        <option value="apparatus_list" <?= ($report_view_type === 'apparatus_list') ? 'selected' : '' ?>>View/Print: Detailed Apparatus List</option>
+                        <option value="detailed" <?= ($report_view_type === 'detailed') ? 'selected' : '' ?>>View/Print: Detailed History</option>
                     </select>
                 </div>
 
                 <div class="col-md-3">
-                    <label for="apparatus_id" class="form-label">Specific Apparatus</label>
+                    <label for="apparatus_id" class="form-label">Specific Apparatus (History Filter)</label>
                     <select name="apparatus_id" id="apparatus_id" class="form-select">
                         <option value="">-- All Apparatus --</option>
                         <?php foreach ($allApparatus as $app): ?>
-                            <option 
+                            <option
                                 value="<?= htmlspecialchars($app['id']) ?>"
                                 <?= ((string)$apparatus_filter_id === (string)$app['id']) ? 'selected' : '' ?>
                             >
@@ -779,28 +1148,33 @@ foreach ($allApparatus as $app) {
                         <?php endforeach; ?>
                     </select>
                 </div>
+                
                 <div class="col-md-3">
-                    <label for="start_date" class="form-label">Start Date (Form Created)</label>
-                    <input type="date" name="start_date" id="start_date" class="form-control" 
-                                             value="<?= htmlspecialchars($start_date) ?>">
-                </div>
-                <div class="col-md-3">
-                    <label for="end_date" class="form-label">End Date (Form Created)</label>
-                    <input type="date" name="end_date" id="end_date" class="form-control" 
-                                             value="<?= htmlspecialchars($end_date) ?>">
+                    <label for="type_filter" class="form-label">Filter Apparatus Type (List Filter)</label>
+                    <select name="type_filter" id="type_filter" class="form-select">
+                        <option value="">-- All Types --</option>
+                        <?php foreach ($uniqueApparatusTypes as $type): ?>
+                            <option
+                                value="<?= htmlspecialchars($type) ?>"
+                                <?= (strtolower($type_filter) === strtolower($type)) ? 'selected' : '' ?>
+                            >
+                                <?= htmlspecialchars(ucfirst($type)) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 
-                <div class="col-md-3 mt-3">
-                    <label for="form_type_filter" class="form-label">Filter by Form Type</label>
+                <div class="col-md-3">
+                    <label for="form_type_filter" class="form-label">Filter Form Type (History Filter)</label>
                     <select name="form_type_filter" id="form_type_filter" class="form-select">
                         <option value="">-- All Form Types --</option>
                         <option value="borrow" <?= (strtolower($form_type_filter) === 'borrow') ? 'selected' : '' ?>>Direct Borrow</option>
                         <option value="reserved" <?= (strtolower($form_type_filter) === 'reserved') ? 'selected' : '' ?>>Reservation Request</option>
                     </select>
                 </div>
-                
-                <div class="col-md-3 mt-3">
-                    <label for="status_filter" class="form-label">Filter by Status</label>
+
+                <div class="col-md-3">
+                    <label for="status_filter" class="form-label">Filter Status (History Filter)</label>
                     <select name="status_filter" id="status_filter" class="form-select">
                         <option value="">-- All Statuses --</option>
                         <option value="waiting_for_approval" <?= ($status_filter === 'waiting_for_approval') ? 'selected' : '' ?>>Pending Approval</option>
@@ -814,13 +1188,24 @@ foreach ($allApparatus as $app) {
                         <option value="rejected" <?= ($status_filter === 'rejected') ? 'selected' : '' ?>>Rejected</option>
                     </select>
                 </div>
+                
+                <div class="col-md-3">
+                    <label for="start_date" class="form-label">Start Date (Form Created)</label>
+                    <input type="date" name="start_date" id="start_date" class="form-control"
+                                             value="<?= htmlspecialchars($start_date) ?>">
+                </div>
+                <div class="col-md-3">
+                    <label for="end_date" class="form-label">End Date (Form Created)</label>
+                    <input type="date" name="end_date" id="end_date" class="form-control"
+                                             value="<?= htmlspecialchars($end_date) ?>">
+                </div>
 
-                <div class="col-md-6 mt-3 d-flex align-items-end justify-content-end">
+                <div class="col-md-3 d-flex align-items-end justify-content-end">
                     <button type="submit" class="btn btn-primary me-2">Apply Filters</button>
                     <a href="staff_report.php" class="btn btn-secondary">Clear</a>
                 </div>
             </form>
-            <p class="text-muted small mt-2 mb-0">Note: Filters apply immediately to the **Detailed Transaction History** table below, and are applied when **Detailed History** is selected for printing.</p>
+            <p class="text-muted small mt-2 mb-0">Note: Filters apply to either the **Detailed Transaction History** or **Detailed Apparatus List** based on your selected view type.</p>
         </div>
         
         <div class="report-section print-summary print-target" id="report-summary">
@@ -912,7 +1297,7 @@ foreach ($allApparatus as $app) {
         </div>
         
         <div class="report-section print-inventory print-target" id="report-inventory">
-            <h3><i class="fas fa-flask me-2"></i> Apparatus Inventory Stock Status</h3>
+            <h3><i class="fas fa-flask me-2"></i> Apparatus Inventory Stock Status (Summary)</h3>
             
             <div class="row g-3">
                 <div class="col-md-4 col-12">
@@ -960,8 +1345,48 @@ foreach ($allApparatus as $app) {
             </div>
         </div>
 
+        <div class="report-section print-detailed-inventory print-target" id="report-apparatus-list">
+            <h3><i class="fas fa-list-ul me-2"></i> Detailed Apparatus List (Filtered: <?= count($filteredApparatus) ?> items)</h3>
+            <div class="table-responsive">
+                <table class="table table-striped table-sm align-middle detailed-inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Apparatus Name</th>
+                            <th>Type</th>
+                            <th>Total Stock</th>
+                            <th>Available Stock</th>
+                            <th>Damaged Stock</th>
+                            <th>Lost Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        if (!empty($filteredApparatus)):
+                            foreach ($filteredApparatus as $app): ?>
+                                <tr>
+                                    <td data-label="Apparatus Name" class="text-start"><strong><?= htmlspecialchars($app['name']) ?></strong></td>
+                                    <td data-label="Type"><?= htmlspecialchars(ucfirst($app['apparatus_type'] ?? 'N/A')) ?></td>
+                                    <td data-label="Total Stock"><?= $app['total_stock'] ?></td>
+                                    <td data-label="Available Stock">
+                                        <?= $app['available_stock'] ?>
+                                    </td>
+                                    <td data-label="Damaged Stock">
+                                        <?= (int)$app['damaged_stock'] ?>
+                                    </td>
+                                    <td data-label="Lost Stock">
+                                        <?= (int)$app['lost_stock'] ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr><td colspan="6" class="text-muted text-center">No apparatus match the current filter criteria.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
         <div class="report-section print-detailed print-target" id="report-detailed-table">
-            <h3><i class="fas fa-history me-2"></i> Detailed Transaction History (Filtered: <?= count($reportForms) ?> Forms)</h3>
+            <h3><i class="fas fa-history me-2"></i> Detailed Transaction History (Filtered: <?= count($detailedItemRows) ?> Items)</h3>
             <div class="table-responsive">
                 <table class="table table-striped table-sm align-middle">
                     <thead>
@@ -978,23 +1403,23 @@ foreach ($allApparatus as $app) {
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
-                        if (!empty($reportForms)): 
-                            foreach ($reportForms as $form): ?>
-                                <tr>
-                                    <td data-label="Form ID:"><?= htmlspecialchars($form['id']) ?></td>
-                                    <td data-label="Student ID:"><?= htmlspecialchars($form['user_id']) ?></td>
+                        <?php
+                        if (!empty($detailedItemRows)):
+                            foreach ($detailedItemRows as $row): ?>
+                                <tr class="<?= $row['is_first_item'] ? 'first-item-of-group' : '' ?>">
+                                    <td data-label="Form ID:"><?= $row['form_id'] ?></td>
+                                    <td data-label="Student ID:"><?= $row['student_id'] ?></td>
                                     <td data-label="Borrower Name:">
-                                        <strong><?= htmlspecialchars($form['firstname'] . ' ' . $form['lastname']) ?></strong>
+                                        <strong style="color: black !important;"><?= $row['borrower_name'] ?></strong>
                                     </td>
-                                    <td data-label="Type:"><?= htmlspecialchars(ucfirst($form['form_type'])) ?></td>
-                                    <td data-label="Status:"><?= getStatusBadge($form) ?></td> 
-                                    <td data-label="Borrow Date:"><?= htmlspecialchars($form['borrow_date'] ?? 'N/A') ?></td>
-                                    <td data-label="Expected Return:"><?= htmlspecialchars($form['expected_return_date'] ?? 'N/A') ?></td>
-                                    <td data-label="Actual Return:"><?= htmlspecialchars($form['actual_return_date'] ?? '-') ?></td> 
+                                    <td data-label="Type:"><?= $row['form_type'] ?></td>
+                                    <td data-label="Status:"><?= $row['status_badge'] ?></td>
+                                    <td data-label="Borrow Date:"><?= $row['borrow_date'] ?></td>
+                                    <td data-label="Expected Return:"><?= $row['expected_return'] ?></td>
+                                    <td data-label="Actual Return:"><?= $row['actual_return'] ?></td>
                                     <td data-label="Items Borrowed:" class="detailed-items-cell text-start">
-                                        <?= getFormItemsText($form['id'], $transaction) ?>
-                                    </td> 
+                                        <span><?= $row['apparatus'] ?></span>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -1010,10 +1435,10 @@ foreach ($allApparatus as $app) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- JAVASCRIPT FOR STAFF NOTIFICATION LOGIC (COPIED) ---
+    // --- JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
     // Function to handle clicking a notification link
     window.handleNotificationClick = function(event, element, notificationId) {
-        event.preventDefault(); 
+        event.preventDefault();
         const linkHref = element.getAttribute('href');
 
         $.post('../api/mark_notification_as_read.php', { notification_id: notificationId, role: 'staff' }, function(response) {
@@ -1021,7 +1446,7 @@ foreach ($allApparatus as $app) {
                 window.location.href = linkHref;
             } else {
                 console.error("Failed to mark notification as read.");
-                window.location.href = linkHref; 
+                window.location.href = linkHref;
             }
         }).fail(function() {
             console.error("API call failed.");
@@ -1033,7 +1458,7 @@ foreach ($allApparatus as $app) {
     window.markAllStaffAsRead = function() {
         $.post('../api/mark_notification_as_read.php', { mark_all: true, role: 'staff' }, function(response) {
             if (response.success) {
-                window.location.reload(); 
+                window.location.reload();
             } else {
                 alert("Failed to clear all notifications.");
                 console.error("Failed to mark all staff notifications as read.");
@@ -1045,12 +1470,12 @@ foreach ($allApparatus as $app) {
     
     // Function to fetch the count and populate the dropdown
     function fetchStaffNotifications() {
-        const apiPath = '../api/get_notifications.php'; 
+        const apiPath = '../api/get_notifications.php';
 
-        $.getJSON(apiPath, function(response) { 
+        $.getJSON(apiPath, function(response) {
             
-            const unreadCount = response.count; 
-            const notifications = response.alerts || []; 
+            const unreadCount = response.count;
+            const notifications = response.alerts || [];
             
             const $badge = $('#notification-bell-badge');
             const $dropdown = $('#notification-dropdown');
@@ -1058,25 +1483,29 @@ foreach ($allApparatus as $app) {
             const $viewAllLink = $dropdown.find('a[href="staff_pending.php"]').detach();
             const $header = $dropdown.find('.dropdown-header');
             
-            $dropdown.find('.dynamic-notif-item').remove();
-            $dropdown.find('.mark-all-btn-wrapper').remove(); 
+            $dropdown.find('.dynamic-notif-placeholder').find('.dynamic-notif-item').remove();
+            $dropdown.find('.mark-all-btn-wrapper').remove();
             
             $badge.text(unreadCount);
-            $badge.toggle(unreadCount > 0); 
+            $badge.toggle(unreadCount > 0);
             
             
             if (notifications.length > 0) {
+                
+                // Clear the placeholder
+                $dropdown.find('.dynamic-notif-placeholder').empty();
+                
                 if (unreadCount > 0) {
-                     $header.after(`
-                             <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
-                                 <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
-                             </a>
-                        `);
+                     $dropdown.find('.dynamic-notif-placeholder').append(`
+                                     <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
+                                         <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
+                                     </a>
+                                 `);
                 }
 
                 notifications.slice(0, 5).forEach(notif => {
                     
-                    let iconClass = 'fas fa-info-circle text-info'; 
+                    let iconClass = 'fas fa-info-circle text-info';
                     if (notif.type.includes('form_pending')) {
                          iconClass = 'fas fa-hourglass-half text-warning';
                     } else if (notif.type.includes('checking')) {
@@ -1085,21 +1514,21 @@ foreach ($allApparatus as $app) {
                     
                     const itemClass = notif.is_read == 0 ? 'fw-bold' : 'text-muted';
 
-                    $header.after(`
-                        <a class="dropdown-item d-flex align-items-center dynamic-notif-item" 
+                    $dropdown.find('.dynamic-notif-placeholder').append(`
+                        <a class="dropdown-item d-flex align-items-center dynamic-notif-item"
                             href="${notif.link}"
                             data-id="${notif.id}"
                             onclick="handleNotificationClick(event, this, ${notif.id})">
                             <div class="me-3"><i class="${iconClass} fa-fw"></i></div>
                             <div>
                                 <div class="small text-gray-500">${notif.created_at.split(' ')[0]}</div>
-                                <span class="${itemClass}">${notif.message}</span>
+                                <span class="${itemClass} d-block">${notif.message}</span>
                             </div>
                         </a>
                     `);
                 });
             } else {
-                $header.after(`
+                $dropdown.find('.dynamic-notif-placeholder').html(`
                     <a class="dropdown-item text-center small text-muted dynamic-notif-item">No New Notifications</a>
                 `);
             }
@@ -1128,13 +1557,13 @@ foreach ($allApparatus as $app) {
         // 3. Use setTimeout to defer the cleanup.
         setTimeout(() => {
             document.body.removeAttribute('data-print-view');
-        }, 100); 
+        }, 100);
     }
     
     // --- Update Hub View Logic (For Screen Display) ---
     function updateHubView() {
         const viewType = document.getElementById('report_view_type_select').value;
-        const sections = ['summary', 'inventory', 'detailed'];
+        const sections = ['summary', 'inventory', 'apparatus-list', 'detailed-table'];
         
         // Hide all sections first
         sections.forEach(id => {
@@ -1159,6 +1588,10 @@ foreach ($allApparatus as $app) {
             document.getElementById('report-inventory').style.display = 'block';
             document.getElementById('main-print-button').style.display = 'block';
             document.getElementById('main-print-button').textContent = 'Print Inventory Stock Status';
+        } else if (viewType === 'apparatus_list') {
+            document.getElementById('report-apparatus-list').style.display = 'block';
+            document.getElementById('main-print-button').style.display = 'block';
+            document.getElementById('main-print-button').textContent = 'Print Detailed Apparatus List';
         } else if (viewType === 'detailed') {
             document.getElementById('report-detailed-table').style.display = 'block';
             document.getElementById('main-print-button').style.display = 'block';
@@ -1178,31 +1611,64 @@ foreach ($allApparatus as $app) {
         // --- Mobile Toggle Logic ---
         const menuToggle = document.querySelector('.menu-toggle');
         const sidebar = document.querySelector('.sidebar');
-        const mainContent = document.querySelector('.main-content'); 
+        const sidebarBackdrop = document.querySelector('.sidebar-backdrop');
+        
+        // Function to set the initial state (open on desktop, closed on mobile)
+        function setInitialState() {
+            if (window.innerWidth > 992) {
+                // Ensure it starts open on desktop
+                sidebar.classList.remove('closed');
+                sidebar.classList.remove('active');
+                if (sidebarBackdrop) sidebarBackdrop.style.display = 'none';
+            } else {
+                // Ensure it starts hidden on mobile
+                sidebar.classList.remove('closed');
+                sidebar.classList.remove('active');
+                if (sidebarBackdrop) sidebarBackdrop.style.display = 'none';
+            }
+        }
+        
+        // Function to toggle the state of the sidebar and layout
+        function toggleSidebar() {
+            if (window.innerWidth <= 992) {
+                // Mobile behavior: Toggle 'active' class for overlay/menu
+                sidebar.classList.toggle('active');
+                if (sidebarBackdrop) {
+                    sidebarBackdrop.style.display = sidebar.classList.contains('active') ? 'block' : 'none';
+                }
+            } else {
+                // Desktop behavior: Toggle 'closed' class to collapse it
+                sidebar.classList.toggle('closed');
+            }
+        }
 
         if (menuToggle && sidebar) {
-            menuToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('active');
-                if (sidebar.classList.contains('active')) {
-                     mainContent.addEventListener('click', closeSidebarOnce);
-                } else {
-                     mainContent.removeEventListener('click', closeSidebarOnce);
-                }
-            });
+            menuToggle.addEventListener('click', toggleSidebar);
             
-            function closeSidebarOnce() {
-                 sidebar.classList.remove('active');
-                 mainContent.removeEventListener('click', closeSidebarOnce);
+            // Backdrop click handler (only for mobile overlay)
+            if (sidebarBackdrop) {
+                sidebarBackdrop.addEventListener('click', () => {
+                    sidebar.classList.remove('active');
+                    sidebarBackdrop.style.display = 'none';
+                });
             }
             
+            // Hide mobile overlay when navigating
             const navLinks = sidebar.querySelectorAll('.nav-link');
             navLinks.forEach(link => {
-                 link.addEventListener('click', () => {
-                     if (window.innerWidth <= 992) {
-                        sidebar.classList.remove('active');
-                     }
-                 });
+                    link.addEventListener('click', () => {
+                       if (window.innerWidth <= 992) {
+                           sidebar.classList.remove('active');
+                           sidebarBackdrop.style.display = 'none';
+                       }
+                    });
             });
+            
+            // Handle window resize (switching between mobile/desktop layouts)
+            window.addEventListener('resize', setInitialState);
+
+            // Set initial state on load
+            setInitialState();
         }
 
         // --- Event Listeners and Initial Load ---
@@ -1219,7 +1685,7 @@ foreach ($allApparatus as $app) {
         
         // --- Notification Initialization ---
         fetchStaffNotifications();
-        setInterval(fetchStaffNotifications, 30000); 
+        setInterval(fetchStaffNotifications, 30000);
     });
 </script>
 </body>

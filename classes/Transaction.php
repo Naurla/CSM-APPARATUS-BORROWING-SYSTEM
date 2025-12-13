@@ -309,7 +309,7 @@ public function createTransaction($user_id, $type, $apparatus_list, $borrow_date
     }
     
 
-   // File: classes/Transaction.php
+    // File: classes/Transaction.php
 
 public function rejectForm($form_id, $staff_id, $remarks = null) {
     $conn = $this->connect();
@@ -450,8 +450,8 @@ public function rejectForm($form_id, $staff_id, $remarks = null) {
 
             // FINAL CHECK: This should now rarely fail if the explicit count check passed above.
             if (count($units) !== $quantity_needed) {
-                    $conn->rollBack();
-                    return 'stock_mismatch_on_approval'; // Trigger stock failure message
+                     $conn->rollBack();
+                     return 'stock_mismatch_on_approval'; // Trigger stock failure message
             }
 
             // Assign units to borrow_items and update unit status
@@ -562,7 +562,7 @@ public function rejectForm($form_id, $staff_id, $remarks = null) {
                 
                 // 1. Mark unit condition as 'lost' and status as 'unavailable'
                 $conn->prepare("UPDATE apparatus_unit SET current_condition = 'lost', current_status = 'unavailable' WHERE unit_id = ?")
-                     ->execute([$unit_id]);
+                        ->execute([$unit_id]);
                 
                 // 2. Increment apparatus_type.lost_stock count (Lock must be acquired before this, or rely on unit lock)
                 $conn->prepare("
@@ -676,7 +676,7 @@ public function rejectForm($form_id, $staff_id, $remarks = null) {
             if (!$stmt_unit_condition_reset->execute($unit_ids)) {
                 $conn->rollBack();  
                 error_log("CRITICAL FAILURE: Unit condition reset failed for form {$form_id} on return.");
-                return false;   
+                return false;    
             }
             
             // Treat the return as late return since it was marked overdue
@@ -780,7 +780,6 @@ public function rejectForm($form_id, $staff_id, $remarks = null) {
     }
 }
     
- 
 public function confirmLateReturn($form_id, $staff_id, $remarks = "") {
     $conn = $this->connect();
     $conn->beginTransaction();
@@ -847,7 +846,7 @@ public function confirmLateReturn($form_id, $staff_id, $remarks = "") {
             if (!$stmt_unit_condition_reset->execute($units_to_restore_from_loss)) {
                 $conn->rollBack();  
                 error_log("CRITICAL FAILURE: Unit condition reset failed for form {$form_id} on late return.");
-                return false;   
+                return false;    
             }
             
             // 2b. Reverse permanent stock changes (DECREMENT LOST_STOCK COUNT in apparatus_type).
@@ -1574,18 +1573,158 @@ public function updateApparatusDetailsAndStock($id, $name, $type, $size, $materi
     $conn->beginTransaction();
 
     try {
+        // 0. Lock the apparatus_type row
+        $stmt_get_old = $conn->prepare("
+            SELECT total_stock, damaged_stock, lost_stock 
+            FROM apparatus_type 
+            WHERE id = :id FOR UPDATE
+        ");
+        $stmt_get_old->execute([':id' => $id]);
+        $old_data = $stmt_get_old->fetch(PDO::FETCH_ASSOC);
+
+        if (!$old_data) {
+            $conn->rollBack();
+            return false; // Apparatus not found
+        }
+        
+        // Current counts based on the type table
+        $old_total = (int)$old_data['total_stock'];
+        $old_damaged = (int)$old_data['damaged_stock'];
+        $old_lost = (int)$old_data['lost_stock'];
+
+        // Get in-use counts for the check
         $currently_out = $this->getCurrentlyOutCount($id, $conn); 
         $pending_quantity = $this->getPendingQuantity($id, $conn); 
 
+        // New stock calculations
         $available_physical_stock = $total_stock - $damaged_stock - $lost_stock;
-        
         $new_available_stock = $available_physical_stock - $currently_out - $pending_quantity; 
         
         if ($new_available_stock < 0) {
             $conn->rollBack();
-            return 'stock_too_low'; 
+            return 'stock_too_low'; // Cannot reduce stock below in-use/pending count
+        }
+        
+        // 1. DETERMINE UNIT-LEVEL CHANGES
+        $net_total_change = $total_stock - $old_total;
+        $net_damaged_change = $damaged_stock - $old_damaged;
+        $net_lost_change = $lost_stock - $old_lost;
+
+        // Fetch all non-borrowed/non-checking unit IDs
+        $stmt_units_to_change = $conn->prepare("
+            SELECT unit_id, current_condition 
+            FROM apparatus_unit 
+            WHERE type_id = :id AND current_status NOT IN ('borrowed', 'checking') 
+            ORDER BY unit_id DESC -- Prioritize newest units for deletion/marking damaged
+            FOR UPDATE
+        ");
+        $stmt_units_to_change->execute([':id' => $id]);
+        $available_units = $stmt_units_to_change->fetchAll(PDO::FETCH_ASSOC);
+
+        $available_unit_ids = array_column($available_units, 'unit_id');
+        $available_count = count($available_unit_ids); // The units we can freely change
+
+        // --- A. Handle Total Stock Change (Creation/Deletion) ---
+        if ($net_total_change > 0) {
+            // Add new units (always 'good' and 'available')
+            $stmt_insert = $conn->prepare("INSERT INTO apparatus_unit (type_id, current_condition, current_status) VALUES (:type_id, 'good', 'available')");
+            for ($i = 0; $i < $net_total_change; $i++) {
+                $stmt_insert->execute([':type_id' => $id]);
+            }
+        } elseif ($net_total_change < 0) {
+            $units_to_delete_count = abs($net_total_change);
+            if ($units_to_delete_count > $available_count) {
+                $conn->rollBack();
+                return 'delete_blocked_by_use'; // Cannot delete units currently in use/pending/damaged/lost
+            }
+            // Delete the last N 'available' units
+            $units_to_delete = array_slice($available_unit_ids, 0, $units_to_delete_count);
+            $delete_placeholders = implode(',', array_fill(0, count($units_to_delete), '?'));
+            $conn->prepare("DELETE FROM apparatus_unit WHERE unit_id IN ({$delete_placeholders})")
+                 ->execute($units_to_delete);
+            
+            // Remove deleted units from the working pool
+            $available_unit_ids = array_slice($available_unit_ids, $units_to_delete_count);
+            $available_count -= $units_to_delete_count;
         }
 
+        // --- B. Handle Damaged/Lost Stock Change (Condition Update) ---
+        
+        // Get units currently marked as 'damaged' or 'lost' that we are now restoring to 'good'
+        $units_to_restore = [];
+        foreach ($available_units as $unit) {
+            if ($unit['current_condition'] === 'damaged' && $damaged_stock < $old_damaged) {
+                $units_to_restore[] = $unit['unit_id'];
+                $old_damaged--; // Keep track of how many we are restoring
+            } elseif ($unit['current_condition'] === 'lost' && $lost_stock < $old_lost) {
+                $units_to_restore[] = $unit['unit_id'];
+                $old_lost--; // Keep track of how many we are restoring
+            }
+        }
+
+        // Restore units to 'good'/'available'
+        if (!empty($units_to_restore)) {
+            $restore_placeholders = implode(',', array_fill(0, count($units_to_restore), '?'));
+            $conn->prepare("UPDATE apparatus_unit SET current_condition = 'good', current_status = 'available' WHERE unit_id IN ({$restore_placeholders})")
+                 ->execute($units_to_restore);
+        }
+
+        // Get available/good units that can be marked 'damaged' or 'lost'
+        $units_to_mark = $conn->prepare("
+            SELECT unit_id FROM apparatus_unit 
+            WHERE type_id = :id 
+              AND current_condition = 'good' 
+              AND current_status = 'available'
+            ORDER BY unit_id DESC
+            LIMIT :limit
+            FOR UPDATE
+        ");
+
+        // Mark NEWLY Damaged units
+        $units_to_mark_damaged_count = max(0, $damaged_stock - $old_damaged);
+        if ($units_to_mark_damaged_count > 0) {
+            $units_to_mark->bindValue(':id', $id);
+            $units_to_mark->bindValue(':limit', $units_to_mark_damaged_count, PDO::PARAM_INT);
+            $units_to_mark->execute();
+            $units_to_mark_damaged = $units_to_mark->fetchAll(PDO::FETCH_COLUMN);
+
+            if (count($units_to_mark_damaged) !== $units_to_mark_damaged_count) {
+                $conn->rollBack(); return 'unit_allocation_error'; // Should not happen if stock check is solid
+            }
+            
+            $damage_placeholders = implode(',', array_fill(0, count($units_to_mark_damaged), '?'));
+            $conn->prepare("UPDATE apparatus_unit SET current_condition = 'damaged', current_status = 'unavailable' WHERE unit_id IN ({$damage_placeholders})")
+                 ->execute($units_to_mark_damaged);
+        }
+
+        // Mark NEWLY Lost units (must be separate call to limit query)
+        $units_to_mark_lost_count = max(0, $lost_stock - $old_lost);
+        if ($units_to_mark_lost_count > 0) {
+            // Need to re-run the good/available unit selection to account for newly damaged units
+            $units_to_mark_lost_query = $conn->prepare("
+                SELECT unit_id FROM apparatus_unit 
+                WHERE type_id = :id 
+                  AND current_condition = 'good' 
+                  AND current_status = 'available'
+                ORDER BY unit_id DESC
+                LIMIT :limit
+                FOR UPDATE
+            ");
+            $units_to_mark_lost_query->bindValue(':id', $id);
+            $units_to_mark_lost_query->bindValue(':limit', $units_to_mark_lost_count, PDO::PARAM_INT);
+            $units_to_mark_lost_query->execute();
+            $units_to_mark_lost = $units_to_mark_lost_query->fetchAll(PDO::FETCH_COLUMN);
+
+            if (count($units_to_mark_lost) !== $units_to_mark_lost_count) {
+                $conn->rollBack(); return 'unit_allocation_error';
+            }
+
+            $lost_placeholders = implode(',', array_fill(0, count($units_to_mark_lost), '?'));
+            $conn->prepare("UPDATE apparatus_unit SET current_condition = 'lost', current_status = 'unavailable' WHERE unit_id IN ({$lost_placeholders})")
+                 ->execute($units_to_mark_lost);
+        }
+
+        // 2. Final Update to apparatus_type aggregate row
         $item_condition = ($damaged_stock > 0 || $lost_stock > 0) ? 'mixed' : 'good';
         $status = ($new_available_stock > 0) ? 'available' : 'unavailable';
         
@@ -1749,7 +1888,7 @@ public function getBorrowFormById($form_id) {
     $query = $conn->prepare("
         SELECT 
             bf.id, 
-            bf.user_id,             
+            bf.user_id,          
             bf.form_type, 
             bf.status, 
             bf.borrow_date, 

@@ -17,41 +17,7 @@ $search = $_GET['search'] ?? '';
 // 1. Data Retrieval (Assuming getAllFormsFiltered accepts these parameters)
 $transactions = $transaction->getAllFormsFiltered($filter, $search);
 
-// Helper function for Item Status in cells (Moved here for self-contained execution)
-function getFormItemsText($form_id, $transaction) {
-    // We assume getFormItems returns the detailed unit-level status
-    $items = $transaction->getFormItems($form_id); 
-    if (empty($items)) return '<span class="text-muted">N/A</span>';
-    $output = '';
-    
-    foreach ($items as $item) {
-        $name = htmlspecialchars($item['name'] ?? 'Unknown');
-        $item_status = strtolower($item['item_status']);
-        $tag_class = $item_status;
-        $tag_text = ucfirst(str_replace('_', ' ', $item_status));
-        
-        // --- MONOCHROME DAMAGE FIX APPLIED HERE (Item Status) ---
-        if ($item_status === 'damaged') {
-             $tag_class = 'damaged'; // Uses the new dark gray style
-             $tag_text = 'Damaged';
-        } elseif ($item_status === 'returned' && strtolower($item['form_status'] ?? '') === 'returned-late') {
-             $tag_class = 'returned-late'; // Red for late return
-             $tag_text = 'Returned (Late)';
-        } elseif ($item_status === 'returned') {
-             $tag_class = 'returned'; // Green for normal return
-             $tag_text = 'Returned';
-        }
-        
-        $output .= '<div class="d-flex align-items-center justify-content-between mb-1">';
-        $output .= '    <span class="me-2">' . $name . ' (x' . ($item['quantity'] ?? 1) . ')</span>';
-        $output .= '    <span class="status-tag ' . $tag_class . '">' . $tag_text . '</span>';
-        $output .= '</div>';
-    }
-    return $output;
-}
-?>
-
-<!DOCTYPE html>
+?><!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -63,14 +29,14 @@ function getFormItemsText($form_id, $transaction) {
     <style>
         
         :root {
-            --msu-red: #A40404; /* FIXED to consistent staff/student red */
-            --msu-red-dark: #820303; /* FIXED to consistent dark red */
+            --msu-red: #A40404;
+            --msu-red-dark: #820303;
             --msu-blue: #007bff;
             --sidebar-width: 280px; 
-            --header-height: 60px; /* ADDED for top bar */
-            --student-logout-red: #C62828; /* FIXED to consistent base red */
+            --header-height: 60px;
+            --student-logout-red: #C62828;
             --base-font-size: 15px; 
-            --main-text: #333; /* ADDED for top bar */
+            --main-text: #333;
             --card-background: #fcfcfc;
             --label-bg: #e9ecef;
         }
@@ -83,12 +49,12 @@ function getFormItemsText($form_id, $transaction) {
             padding: 0;
             margin: 0;
             font-size: var(--base-font-size);
-            overflow-x: hidden; /* CRITICAL: Prevent page-level scrollbar */
+            overflow-x: hidden;
         }
         
         /* NEW CSS for Mobile Toggle */
         .menu-toggle {
-            display: none; /* Hidden on desktop */
+            display: none;
             position: fixed;
             top: 15px;
             left: 20px;
@@ -102,7 +68,7 @@ function getFormItemsText($form_id, $transaction) {
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
-        /* --- Top Header Bar Styles (ADDED) --- */
+        /* --- Top Header Bar Styles --- */
         .top-header-bar {
             position: fixed;
             top: 0;
@@ -114,7 +80,7 @@ function getFormItemsText($form_id, $transaction) {
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
             display: flex;
             align-items: center;
-            justify-content: flex-end; /* Align content to the right */
+            justify-content: flex-end;
             padding: 0 30px; 
             z-index: 1000;
         }
@@ -221,7 +187,7 @@ function getFormItemsText($form_id, $transaction) {
             display: flex; 
             align-items: center;
             justify-content: flex-start; 
-            background-color: var(--student-logout-red) !important; /* FIXED to consistent base red */
+            background-color: var(--student-logout-red) !important;
             color: white !important;
             padding: 18px 25px; 
             border-radius: 0; 
@@ -231,7 +197,7 @@ function getFormItemsText($form_id, $transaction) {
             transition: background 0.3s;
         }
         .logout-link .nav-link:hover {
-            background-color: var(--msu-red-dark) !important; /* FIXED to consistent dark hover color */
+            background-color: var(--msu-red-dark) !important;
         }
         /* --- END FINAL LOGOUT FIX --- */
 
@@ -271,30 +237,47 @@ function getFormItemsText($form_id, $transaction) {
         
         /* Ensure the table is wide enough to contain content and trigger scroll */
         .table {
-             min-width: 1350px; /* Define a generous minimum width to activate internal scroll */
+             min-width: 1350px;
+             /* Allow for cleaner borders when not using rowspan */
+             border-collapse: separate; 
         }
         
         .table thead th {
             background: var(--msu-red);
             color: white;
-            font-weight: 700; /* Bolder */
+            font-weight: 700;
             vertical-align: middle;
             text-align: center;
             font-size: 0.95rem; 
             padding: 10px 5px; 
             white-space: nowrap;
         }
+        
+        /* IMPORTANT: Apply a vertical-align to the item column for better presentation */
         .table tbody td {
-            vertical-align: middle;
+            vertical-align: top; /* Changed from middle to top */
             font-size: 0.95rem; 
             padding: 8px 4px; 
             text-align: center;
+            border-bottom: 1px solid #e9ecef; /* Default separator for every row */
         }
         
         
-        td.apparatus-list-cell {
-            text-align: left;
+        /* --- ITEM-SPECIFIC CELL STYLE (NEW) --- */
+        td.item-cell {
+            text-align: left !important;
             padding: 8px 10px !important; 
+        }
+
+        /* --- VISUAL SEPARATION ENHANCEMENT (MODIFIED FOR NO ROWSPAN) --- */
+        /* Target the FIRST item row of each form to apply a strong top border */
+        .table tbody tr.item-row.first-item-of-group td {
+            border-top: 2px solid #ccc; /* Strong border for group start */
+        }
+
+        /* Adjust the very first row of the entire table */
+        .table tbody tr:first-child.item-row.first-item-of-group td {
+             border-top: 0; /* Remove top border on the very first row of the table */
         }
         
         /* Define column widths for better layout balance */
@@ -320,18 +303,31 @@ function getFormItemsText($form_id, $transaction) {
             white-space: nowrap;
         }
 
-        /* MONOCHROME FIX: Dark Gray/Black for Damaged (Form Status and Item Status) */
+        /* ******************************************************************* */
+        /* --- DAMAGED Tag Styles (Matching Student View: Solid Red) --- */
         .status-tag.damaged { 
-            background-color: #343a40 !important; /* Dark Gray/Black */
+            background-color: #dc3545 !important;
             color: white !important; 
             font-weight: 800; 
+            padding: 2px 7px;
+            font-size: 0.75rem; 
         }
+        
+        /* --- Returned Tag Styles (Matching Student View: Gray) --- */
+        .status-tag.returned {
+            background-color: #e9ecef !important;
+            color: #333 !important;
+            font-weight: 600;
+            padding: 2px 7px;
+            font-size: 0.75rem; 
+        }
+        /* ******************************************************************* */
+
 
         /* Standard Colors (Lighter background, dark text for better contrast) */
         .status-tag.waiting_for_approval, .status-tag.pending { background-color: #ffc10730; color: #b8860b; }
         .status-tag.approved, .status-tag.borrowed, .status-tag.checking { background-color: #007bff30; color: #007bff; }
         .status-tag.rejected { background-color: #6c757d30; color: #6c757d; }
-        .status-tag.returned { background-color: #28a74530; color: #28a745; }
         .status-tag.overdue, .status-tag.returned-late { background-color: #dc354530; color: #dc3545; border: 1px solid #dc3545; }
         
         
@@ -354,131 +350,56 @@ function getFormItemsText($form_id, $transaction) {
         }
 
         @media (max-width: 768px) {
-            /* Full mobile table stacking (Stacked Card View) */
-            .table { min-width: auto; }
-            .table thead { display: none; } 
-            .table tbody, .table tr, .table td { display: block; width: 100%; }
-            
-            .table tr {
-                margin-bottom: 15px; 
-                border: 1px solid #ccc;
-                border-left: 5px solid var(--msu-red); /* Highlight left border */
-                border-radius: 8px; 
-                background-color: var(--card-background); 
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
-                padding: 0; 
-                overflow: hidden;
-            }
-            
-            .table td {
-                text-align: right !important; 
-                padding-left: 50% !important;
-                position: relative;
-                border: none;
-                border-bottom: 1px solid #eee;
-                padding: 10px 10px !important; 
-            }
-            .table td:last-child { border-bottom: none; }
+             /* When using the no-rowspan method, standard mobile stacking works better */
+             .table thead { display: none; }
+             .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
+             
+             .table tbody tr {
+                 border: 1px solid #ddd;
+                 margin-bottom: 15px;
+                 border-radius: 8px;
+                 box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                 background-color: white !important;
+             }
+             
+             .table tbody tr.item-row.first-item-of-group td {
+                 border-top: 1px solid #ddd; /* Reset from desktop style */
+             }
 
-            /* --- Label Styling (Clean and Clear) --- */
-            .table td::before {
-                content: attr(data-label);
-                position: absolute;
-                left: 0; 
-                width: 50%;
-                height: 100%;
-                padding: 10px;
-                white-space: nowrap;
-                text-align: left;
-                font-weight: 600;
-                color: var(--main-text); 
-                font-size: 0.9rem;
-                background-color: var(--label-bg); 
-                border-right: 1px solid #ddd;
-                display: flex;
-                align-items: center;
-            }
-            
-            /* --- Header and Student Details --- */
-            .table tbody tr td:nth-child(1) { /* Form ID - Top of card */
-                text-align: left !important;
-                padding: 10px !important;
-                font-weight: 700;
-                color: #6c757d;
-                background-color: #f8f8f8;
-            }
-            .table tbody tr td:nth-child(1)::before {
-                content: "Form "; 
-                background: none;
-                border: none;
-                color: #6c757d;
-                font-size: 0.9rem;
-                padding: 0;
-                position: static;
-                width: auto;
-                height: auto;
-                font-weight: 600;
-            }
-            
-            .table tbody tr td:nth-child(2) { /* Student Details - Primary visual item */
-                font-size: 1.1rem;
-                font-weight: 700;
-                color: var(--msu-red-dark);
-                border-bottom: 2px solid #ddd;
-            }
-            .table tbody tr td:nth-child(2)::before {
-                content: "Borrower";
-                background-color: #f8f8f8; 
-                color: var(--msu-red-dark);
-                font-weight: 700;
-            }
-            
-            /* --- Apparatus List Cell (Custom Content) --- */
-            .table tbody tr td:nth-child(8) {
-                text-align: left !important;
-                padding-left: 10px !important;
-                border-bottom: 1px solid #ddd;
-            }
-            .table tbody tr td:nth-child(8)::before {
-                content: "Items & Status";
-                position: static;
-                width: 100%;
-                height: auto;
-                background: #f8f8f8;
-                border-right: none;
-                border-bottom: 1px solid #eee;
-                display: block;
-                padding: 10px;
-                margin-bottom: 5px;
-            }
-            
-            /* --- Staff Remarks (Last Item) --- */
-            .table tbody tr td:nth-child(9) {
-                 text-align: left !important; 
-                 padding-left: 10px !important;
-                 border-bottom: none;
-            }
-            .table tbody tr td:nth-child(9)::before {
-                content: "Staff Remarks";
-                position: static;
-                width: 100%;
-                height: auto;
-                background: #f8f8f8;
-                border-right: none;
-                border-bottom: 1px solid #eee;
-                display: block;
-                padding: 10px;
-                margin-bottom: 5px;
-            }
+             .table td {
+                 text-align: right !important;
+                 padding-left: 50% !important;
+                 position: relative;
+                 border: none !important;
+                 border-bottom: 1px dotted #eee !important;
+                 white-space: normal;
+             }
+             
+             .table td::before {
+                 content: attr(data-label);
+                 position: absolute;
+                 left: 10px;
+                 width: 45%;
+                 padding-right: 10px;
+                 white-space: nowrap;
+                 font-weight: 600;
+                 text-align: left;
+                 color: #333;
+             }
+             
+             .table tbody tr:last-child {
+                 margin-bottom: 0; /* Remove margin on last row */
+             }
+             
+             .table tbody tr.item-row.first-item-of-group {
+                 margin-top: 15px; /* Add margin to first item row of a group to separate from previous form group */
+             }
         }
 
         @media (max-width: 576px) {
-             /* Smallest screen adjustments */
-            .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
-            .content-area { padding: 10px; }
-            .top-header-bar { padding-left: 65px; }
-            .table tbody tr td:nth-child(2) { font-size: 0.9rem; }
-            .table td::before { font-size: 0.85rem; }
+              .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
+              .content-area { padding: 10px; }
+              .top-header-bar { padding-left: 65px; }
         }
     </style>
 </head>
@@ -586,31 +507,74 @@ function getFormItemsText($form_id, $transaction) {
                         <th>Borrow Date</th>
                         <th>Expected Return</th>
                         <th>Actual Return</th>
-                        <th>Apparatus (Item & Status)</th> <th>Staff Remarks</th>
+                        <th>Apparatus (Item)</th> <th>Staff Remarks</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (!empty($transactions)): ?>
-                        <?php foreach ($transactions as $trans): 
-                            // Fetch the detailed, unit-level item list
-                            $detailed_items = $transaction->getFormItems($trans['id']); 
-                            $clean_status = strtolower($trans['status']);
+                    <?php 
+                        $previous_form_id = null;
+                        if (!empty($transactions)): 
                             
-                            // Determine the final status class and text for the main form status
-                            $status_class = $clean_status;
-                            $display_status_text = ucfirst(str_replace('_', ' ', $trans['status']));
+                            $transactions_with_items = []; 
 
-                            // 1. Handle LATE RETURN: Overrides 'returned' class and text
-                            if ($trans['status'] === 'returned' && (isset($trans['is_late_return']) && $trans['is_late_return'] == 1)) {
-                                $status_class = 'returned-late'; // Custom class for coloring/border
-                                $display_status_text = 'Returned (LATE)';
-                            } 
-                            // 2. Handle DAMAGED: Use the monochrome dark class
-                            elseif ($trans['status'] === 'damaged') {
-                                $status_class = 'damaged'; 
+                            // First pass: Prepare data for display (no more row spanning needed)
+                            foreach ($transactions as $trans) {
+                                $form_id = $trans['id'];
+                                // IMPORTANT: Assuming getFormItems returns an array of individual item units
+                                $detailed_items = $transaction->getFormItems($form_id); 
+                                
+                                // If the form has no items (e.g., rejected early), ensure we loop once
+                                if (empty($detailed_items)) {
+                                    $detailed_items = [null]; 
+                                }
+                                
+                                $transactions_with_items[$form_id] = [
+                                    'form' => $trans,
+                                    'items' => $detailed_items
+                                ];
                             }
+
+                            // Second pass: Output rows, one per item
+                            foreach ($transactions_with_items as $form_id => $data):
+                                $trans = $data['form'];
+                                $detailed_items = $data['items'];
+
+                                // Determine the main form status/class (for date/remark columns if needed)
+                                $form_status = strtolower($trans['status']);
+
+                                // Loop through the items for this single form
+                                foreach ($detailed_items as $index => $unit):
+                                    
+                                    // Item status logic
+                                    $name = htmlspecialchars($unit['name'] ?? '-');
+                                    
+                                    // --- CRITICAL FIX 1: Use Item Status for the Status column
+                                    $item_status = strtolower($unit['item_status'] ?? $form_status);
+                                    
+                                    $item_tag_class = $item_status;
+                                    $item_tag_text = ucfirst(str_replace('_', ' ', $item_status));
+                                    
+                                    if ($item_status === 'returned' && (isset($unit['is_late_return']) && $unit['is_late_return'] == 1)) {
+                                         // NOTE: is_late_return must be derived from item return vs expected date if item return date is present
+                                         $item_tag_class = 'returned-late';
+                                         $item_tag_text = 'Returned (LATE)';
+                                    } elseif ($item_status === 'damaged') {
+                                        $item_tag_class = 'damaged';
+                                        $item_tag_text = 'Damaged';
+                                    } elseif ($item_status === 'returned') {
+                                        $item_tag_class = 'returned'; 
+                                        $item_tag_text = 'Returned';
+                                    }
+                                    
+                                    // Add a visual class if this is the first item of a new form group
+                                    $row_classes = 'item-row';
+                                    if ($previous_form_id !== $form_id) {
+                                        $row_classes .= ' first-item-of-group';
+                                        $previous_form_id = $form_id; // Update tracker
+                                    }
+
                         ?>
-                        <tr>
+                        <tr class="<?= $row_classes ?>">
                             <td data-label="Form ID:"><?= $trans['id'] ?></td>
                             <td data-label="Student Details:">
                                 <strong><?= htmlspecialchars($trans['firstname'] ?? '') ?> <?= htmlspecialchars($trans['lastname'] ?? '') ?></strong>
@@ -620,52 +584,27 @@ function getFormItemsText($form_id, $transaction) {
                             <td data-label="Type:"><?= ucfirst($trans['form_type']) ?></td>
                             
                             <td data-label="Status:">
-                                <span class="status-tag <?= $status_class ?>">
-                                    <?= $display_status_text ?>
+                                <span class="status-tag <?= $item_tag_class ?>">
+                                    <?= $item_tag_text ?>
                                 </span>
                             </td>
+                            
                             <td data-label="Borrow Date:"><?= $trans['borrow_date'] ?: '-' ?></td>
                             <td data-label="Expected Return:"><?= $trans['expected_return_date'] ?: '-' ?></td>
                             <td data-label="Actual Return:"><?= $trans['actual_return_date'] ?: '-' ?></td>
                             
-                            <td data-label="Apparatus (Item & Status):" class="apparatus-list-cell">
-                                <?php 
-                                // Pass the main form status to the helper function for item-level status logic
-                                $form_status_for_helper = $trans['status'];
-                                
-                                foreach ($detailed_items as $it): 
-                                    $name = htmlspecialchars($it['name'] ?? 'Unknown');
-                                    $item_status = strtolower($it['item_status']);
-                                    
-                                    $tag_class = $item_status;
-                                    $tag_text = ucfirst(str_replace('_', ' ', $item_status));
-                                    
-                                    // Apply MONOCHROME and custom coloring based on item status
-                                    if ($item_status === 'damaged') {
-                                             $tag_class = 'damaged'; 
-                                             $tag_text = 'Damaged';
-                                    } elseif ($item_status === 'returned') {
-                                             // Check for LATE RETURN status consistency
-                                             if ($form_status_for_helper === 'returned' && (isset($trans['is_late_return']) && $trans['is_late_return'] == 1)) {
-                                                 $tag_class = 'returned-late'; // Red for late return
-                                                 $tag_text = 'Returned (Late)';
-                                             } else {
-                                                 $tag_class = 'returned'; // Green for normal return
-                                                 $tag_text = 'Returned';
-                                             }
-                                    }
-                                ?>
-                                    <div class="d-flex align-items-center justify-content-between mb-1">
-                                        <span class="me-2"><?= $name ?> (x<?= $it['quantity'] ?? 1 ?>)</span>
-                                        <span class="status-tag <?= $tag_class ?>">
-                                            <?= $tag_text ?>
-                                        </span>
-                                    </div>
-                                <?php endforeach; ?>
+                            <td data-label="Apparatus (Item):" class="item-cell">
+                                <div class="d-flex align-items-center justify-content-start p-0">
+                                    <span><?= $name ?> (x<?= $unit['quantity'] ?? 1 ?>)</span>
+                                </div>
                             </td>
+                            
                             <td data-label="Staff Remarks:"><?= htmlspecialchars($trans['staff_remarks'] ?? '-') ?></td>
                         </tr>
-                        <?php endforeach; ?>
+                        <?php 
+                                endforeach; // End item loop
+                            endforeach; // End form loop 
+                        ?>
                     <?php else: ?>
                         <tr><td colspan="9" class="text-muted py-3">No transactions found matching the selected filter or search term.</td></tr>
                     <?php endif; ?>
@@ -749,9 +688,9 @@ function getFormItemsText($form_id, $transaction) {
                 if (unreadCount > 0) {
                      $header.after(`
                              <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
-                                <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
+                                 <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
                              </a>
-                        `);
+                         `);
                 }
 
                 // Iterate and insert notifications
@@ -841,7 +780,7 @@ function getFormItemsText($form_id, $transaction) {
             navLinks.forEach(link => {
                  link.addEventListener('click', () => {
                      if (window.innerWidth <= 992) {
-                        sidebar.classList.remove('active');
+                         sidebar.classList.remove('active');
                      }
                  });
             });

@@ -12,7 +12,7 @@ function deleteApparatusImage($imageName) {
         $target_path = $upload_dir . $imageName;
         if (file_exists($target_path)) {
             // Suppress errors with @in case of permission issues
-            @unlink($target_path); 
+            @unlink($target_path);  
         }
     }
 }
@@ -266,6 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unit_to_restore'])) {
         // Changed message to reflect generalized check (not_damaged/not_lost)
         $message = "❌ Error: Unit ID {$unit_id} was not marked as damaged or lost, or does not exist.";
     } else {
+        // Assuming the original 'Failed to restore Unit ID 4 due to a database error' came from here
         $message = "❌ Failed to restore Unit ID {$unit_id} due to a database error.";
     }
 
@@ -296,11 +297,23 @@ if ($edit_id) {
             $lost_stock = $current_apparatus['lost_stock']; // NEW
         }
         $current_image = $current_apparatus['image'];
+        // Store original values as hidden fields for JavaScript comparison
+        $original_total_stock = $current_apparatus['total_stock'];
+        $original_damaged_stock = $current_apparatus['damaged_stock'];
+        $original_lost_stock = $current_apparatus['lost_stock'];
+        $currently_out = $current_apparatus['currently_out'];
+
     } else {
         $success_message = "❌ Apparatus with ID $edit_id not found.";
         $edit_id = null; // Clear edit mode
     }
-}
+} else {
+    // Set dummy original values if not in edit mode to prevent errors
+    $original_total_stock = 0;
+    $original_damaged_stock = 0;
+    $original_lost_stock = 0;
+    $currently_out = 0;
+} 
 
 
 // --- Search and Filter Logic--- 
@@ -341,36 +354,45 @@ if (!empty($search_query)) {
 <style>
     /* CSS FIXES: Explicitly constraining image and description width to stabilize table UI */
     :root {
-        --msu-red: #A40404; /* FIXED to consistent staff/student red */
-        --msu-red-dark: #820303; /* FIXED to consistent dark red */
+        --msu-red: #A40404;
+        --msu-red-dark: #820303;
         --msu-blue: #007bff;
-        --sidebar-width: 280px; 
-        --header-height: 60px; 
-        --student-logout-red: #dc3545; 
+        --sidebar-width: 280px;
+        --header-height: 60px;
+        --student-logout-red: #dc3545;
         --base-font-size: 15px;
-        --main-text: #333; 
-        --card-background: #fcfcfc; /* New: for mobile card background */
-        --label-bg: #e9ecef; /* Light gray background for mobile labels */
+        --main-text: #333;
+        --card-background: #fcfcfc;
+        --label-bg: #e9ecef;
     }
 
-    body { 
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         background: #f5f6fa;
         min-height: 100vh;
-        display: flex; 
+        display: flex;
         padding: 0;
         margin: 0;
         font-size: var(--base-font-size);
         /* CRITICAL: Prevents the page body from generating a horizontal scrollbar */
-        overflow-x: hidden; 
+        overflow-x: hidden;
     }
     
-    /* NEW CSS for Mobile Toggle */
+    /* --- NEW CSS ADDITION: Hides burger button when any modal is open --- */
+    body.modal-open .menu-toggle {
+        display: none !important;
+    }
+    /* --- END NEW CSS ADDITION --- */
+    
+    /* --- BURGER BUTTON FIX: Always visible on desktop for sidebar collapse, CENTERED ICON --- */
     .menu-toggle {
-        display: none; /* Hidden on desktop */
+        /* FIX FOR REQUEST: Hide the button completely on DESKTOP */
+        display: none; 
+        
+        /* Original styles (retained for mobile only via media query) */
         position: fixed;
         top: 15px;
-        left: 20px;
+        left: calc(var(--sidebar-width) + 20px); 
         z-index: 1060; 
         background: var(--msu-red);
         color: white;
@@ -379,13 +401,65 @@ if (!empty($search_query)) {
         border-radius: 6px;
         font-size: 1.2rem;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        transition: left 0.3s ease; 
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 44px; 
+        height: 44px; 
+        padding: 0; 
     }
     
+    /* NEW CLASS: When sidebar is closed (Desktop collapse mode) - RETAIN FOR TRANSITION LOGIC*/
+    .sidebar.closed {
+        left: calc(var(--sidebar-width) * -1); /* Move sidebar off-screen */
+    }
+    .sidebar.closed ~ .menu-toggle {
+        left: 20px; /* Shift button back to the left edge of the screen */
+    }
+    /* FIX: When sidebar is permanently open on desktop, main content and header must shift */
+    .top-header-bar {
+        left: var(--sidebar-width); /* Default desktop position */
+    }
+    .main-content {
+        margin-left: var(--sidebar-width); /* Default desktop position */
+    }
+    /* The .closed classes below are now essentially unused on desktop since it's permanently open */
+    .sidebar.closed ~ .top-header-bar {
+        left: 0; 
+    }
+    .sidebar.closed ~ .main-content {
+        margin-left: 0; 
+        width: 100%;
+    }
+    /* --- END BURGER BUTTON FIX --- */
+
+
+    /* NEW: Backdrop for mobile sidebar */
+    .sidebar-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    /* When sidebar is active (mobile overlay mode), show backdrop */
+    .sidebar.active ~ .sidebar-backdrop {
+        display: block;
+        opacity: 1;
+    }
+
+
     /* --- Top Header Bar Styles (COPIED FROM DASHBOARD) --- */
     .top-header-bar {
         position: fixed;
         top: 0;
-        left: var(--sidebar-width);
+        left: var(--sidebar-width); /* Start from the right edge of the fixed sidebar */
         right: 0;
         height: var(--header-height);
         background-color: #fff;
@@ -393,14 +467,16 @@ if (!empty($search_query)) {
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         display: flex;
         align-items: center;
-        justify-content: flex-end; 
-        padding: 0 30px; 
-        z-index: 1000;
+        justify-content: flex-end;
+        padding: 0 30px;
+        /* FIX: Set a high Z-index so it sits above all content and the sidebar (when closed) */
+        z-index: 1050;
+        transition: left 0.3s ease; /* For smooth desktop collapse */
     }
     
     .notification-bell-container {
         position: relative;
-        list-style: none; 
+        list-style: none;
         padding: 0;
         margin: 0;
     }
@@ -410,11 +486,11 @@ if (!empty($search_query)) {
     }
     .notification-bell-container .badge-counter {
         position: absolute;
-        top: 5px; 
+        top: 5px;
         right: 0px;
-        font-size: 0.8em; 
+        font-size: 0.8em;
         padding: 0.35em 0.5em;
-        background-color: #ffc107; 
+        background-color: #ffc107;
         color: var(--main-text);
         font-weight: bold;
     }
@@ -449,19 +525,20 @@ if (!empty($search_query)) {
         background-color: var(--msu-red);
         color: white;
         padding: 0;
-        position: fixed; 
+        position: fixed;
         top: 0;
-        left: 0;
+        left: 0; /* Always visible on desktop now */
         display: flex;
         flex-direction: column;
         box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
-        z-index: 1010; /* Ensure sidebar is above the header */
+        z-index: 1010;
+        transition: left 0.3s ease; /* For smooth desktop collapse/expand */
     }
 
     .sidebar-header {
         text-align: center;
-        padding: 25px 15px; 
-        font-size: 1.3rem; 
+        padding: 25px 15px;
+        font-size: 1.3rem;
         font-weight: 700;
         line-height: 1.2;
         color: #fff;
@@ -483,7 +560,7 @@ if (!empty($search_query)) {
     .sidebar-nav .nav-link {
         color: white;
         padding: 18px 25px;
-        font-size: 1.05rem; 
+        font-size: 1.05rem;
         font-weight: 600;
         transition: background-color 0.2s;
     }
@@ -497,23 +574,23 @@ if (!empty($search_query)) {
     
     /* --- FINAL LOGOUT FIX --- */
     .logout-link {
-        margin-top: auto; 
-        padding: 0; 
-        border-top: 1px solid rgba(255, 255, 255, 0.1); 
-        width: 100%; 
-        background-color: var(--msu-red); 
+        margin-top: auto;
+        padding: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        width: 100%;
+        background-color: var(--msu-red);
     }
-    .logout-link .nav-link { 
-        display: flex; 
+    .logout-link .nav-link {
+        display: flex;
         align-items: center;
-        justify-content: flex-start; 
+        justify-content: flex-start;
         background-color: #C62828 !important; /* FIXED to match consistent base logout color */
         color: white !important;
-        padding: 18px 25px; 
-        border-radius: 0; 
+        padding: 18px 25px;
+        border-radius: 0;
         text-decoration: none;
-        font-weight: 600; 
-        font-size: 1.05rem; 
+        font-weight: 600;
+        font-size: 1.05rem;
         transition: background 0.3s;
     }
     .logout-link .nav-link:hover {
@@ -522,32 +599,33 @@ if (!empty($search_query)) {
     /* --- END FINAL LOGOUT FIX --- */
 
     .main-content {
-        margin-left: var(--sidebar-width); 
+        margin-left: var(--sidebar-width);
         flex-grow: 1;
         padding: 30px;
-        width: calc(100% - var(--sidebar-width)); 
+        width: calc(100% - var(--sidebar-width));
         /* CRITICAL FIX: Add padding-top to push content below fixed header */
-        padding-top: calc(var(--header-height) + 30px); 
+        padding-top: calc(var(--header-height) + 30px);
+        transition: margin-left 0.3s ease, width 0.3s ease; /* For smooth desktop collapse */
     }
     .content-area {
-        background: #fff; 
-        border-radius: 12px; 
-        padding: 30px; 
+        background: #fff;
+        border-radius: 12px;
+        padding: 30px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
 
-    h2 { 
-        color: #333; 
+    h2 {
+        color: #333;
         border-bottom: 2px solid var(--msu-red);
-        padding-bottom: 15px; 
-        margin-bottom: 30px; 
+        padding-bottom: 15px;
+        margin-bottom: 30px;
         font-weight: 600;
-        font-size: 2rem; 
+        font-size: 2rem;
     }
     h3 {
-        color: #333; 
+        color: #333;
         font-weight: 600;
-        font-size: 1.4rem; 
+        font-size: 1.4rem;
         border-bottom: 1px solid #eee;
         padding-bottom: 10px;
     }
@@ -584,12 +662,13 @@ if (!empty($search_query)) {
         border-radius: 8px;
         overflow-x: auto; /* Keeps scroll inside this container */
         box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        margin-top: 20px; 
+        margin-top: 20px;
     }
     
     /* Ensure the table doesn't collapse but has a defined width for scrolling */
     .table {
-        min-width: 1300px; /* Define a generous minimum width to activate internal scroll */
+        /* Adjusted minimum width to account for removed columns */
+        min-width: 1100px; 
     }
 
     .table thead th {
@@ -598,34 +677,34 @@ if (!empty($search_query)) {
         font-weight: 700;
         vertical-align: middle;
         text-align: center;
-        font-size: 0.95rem; 
+        font-size: 0.95rem;
         padding: 10px 5px;
-        white-space: nowrap; 
+        white-space: nowrap;
     }
     .table tbody td {
         vertical-align: middle;
-        font-size: 0.95rem; 
+        font-size: 0.95rem;
         padding: 8px 4px;
         text-align: center;
     }
     
     /* UI FIX: Constrain image size in table */
     .table img {
-        width: 60px; 
-        height: 60px; 
+        width: 60px;
+        height: 60px;
         object-fit: cover;
         border-radius: 4px;
         border: 1px solid #ddd;
-        vertical-align: middle; 
+        vertical-align: middle;
     }
     
     .status-tag {
         display: inline-block;
-        padding: 5px 12px; 
-        border-radius: 16px; 
+        padding: 5px 12px;
+        border-radius: 16px;
         font-weight: 700;
         text-transform: capitalize;
-        font-size: 0.85rem; 
+        font-size: 0.85rem;
         line-height: 1.2;
         white-space: nowrap;
     }
@@ -642,35 +721,35 @@ if (!empty($search_query)) {
 
     .action-buttons-group {
         display: flex;
-        gap: 5px; 
+        gap: 5px;
         justify-content: center;
         align-items: center;
-        flex-wrap: nowrap; 
+        flex-wrap: nowrap;
     }
     
     .action-buttons-group .btn {
         padding: 7px 11px;
         font-size: 0.9rem;
         white-space: nowrap;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
     .btn-stock-action {
-        padding: 7px 9px; 
+        padding: 7px 9px;
     }
 
     .btn-icon-only {
-        width: 38px; 
+        width: 38px;
         height: 38px;
         padding: 0;
         display: flex;
         justify-content: center;
         align-items: center;
-        border-radius: 6px; 
+        border-radius: 6px;
     }
     
     /* Description cell needs space but must wrap */
-    .table tbody td:nth-child(12) {
+    .table tbody td:nth-child(11) { /* Adjusted index after removing Stock/Unit Actions */
         max-width: 180px;
         white-space: normal;
         word-wrap: break-word;
@@ -686,24 +765,86 @@ if (!empty($search_query)) {
     #unitManageModal .modal-header { background-color: var(--msu-blue); color: white; }
     #restoreConfirmModal .modal-header { background-color: #ffc107; color: #333; }
 
+    /* NEW: Edit Stock Modal Header */
+    #editStockConfirmModal .modal-header { background-color: #17a2b8; color: white; }
+
 
     /* --- RESPONSIVE ADJUSTMENTS --- */
+    @media (max-width: 1200px) {
+        /* Optimize column layout for larger tablets/smaller laptops (2 columns) */
+        .add-form .col-md-4 {
+            flex: 0 0 50%;
+            max-width: 50%;
+        }
+        .add-form .col-12 {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+        /* Tighten table spacing */
+        .table thead th {
+             font-size: 0.9rem;
+             padding: 8px 4px;
+        }
+        .table tbody td {
+             font-size: 0.9rem;
+             padding: 6px 3px;
+        }
+        .table {
+            min-width: 900px; /* Adjusted min width */
+        }
+        /* Make Stock buttons wrap and take full width */
+        .unit-actions-cell {
+            min-width: 150px;
+        }
+        .unit-actions-cell .action-buttons-group {
+             flex-wrap: wrap;
+        }
+        .unit-actions-cell .action-buttons-group .btn {
+            flex: 1 1 100%;
+            margin-bottom: 5px;
+        }
+        /* Keep edit/delete side-by-side or expand */
+        .action-buttons-group:last-child {
+            flex-wrap: nowrap;
+        }
+        .action-buttons-group:last-child .btn-icon-only {
+             flex-grow: 1;
+             width: 48%; /* Adjust for gap */
+        }
+    }
+    
     @media (max-width: 992px) {
-        /* Mobile Sidebar Toggle */
-        .menu-toggle { display: block; }
+        /* Mobile Sidebar Toggle: Always show the button and position it */
+        .menu-toggle {
+            display: flex; /* Ensure it stays flex/block */
+            left: 20px;
+        }
         /* Set a smaller default width for mobile sidebar */
-        .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
-        .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
+        .sidebar {
+            left: calc(var(--sidebar-width) * -1);
+            transition: left 0.3s ease;
+            box-shadow: none;
+            --sidebar-width: 250px;
+        }
+        .sidebar.active {
+            left: 0;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+        }
+        /* On desktop, the .closed class handles the non-mobile collapse state */
+        .sidebar.closed {
+            left: calc(var(--sidebar-width) * -1);
+        }
+
 
         /* Main Content and Header Adjustments */
-        .main-content { 
-            margin-left: 0; 
-            padding-left: 15px; 
+        .main-content {
+            margin-left: 0;
+            padding-left: 15px;
             padding-right: 15px;
-            padding-top: calc(var(--header-height) + 15px); /* Adjusted top padding */ 
+            padding-top: calc(var(--header-height) + 15px); /* Adjusted top padding */
         }
-        .top-header-bar { 
-            left: 0; 
+        .top-header-bar {
+            left: 0;
             padding-left: 70px; /* Space for the menu toggle button */
             padding-right: 15px;
         }
@@ -711,11 +852,37 @@ if (!empty($search_query)) {
         h2 { font-size: 1.8rem; }
         h3 { font-size: 1.3rem; }
         
-        /* Form responsiveness */
+        /* Form responsiveness: full stack on tablet portrait */
         .add-form { padding: 15px; }
+        .add-form .col-md-4 {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
         
         /* Table responsiveness for 992px+ */
-        .table { min-width: 1000px; /* Adjust min width down slightly */ }
+        .table { min-width: 900px; /* Ensure horizontal scroll for tables */ }
+        .table thead th { font-size: 0.85rem; }
+        
+        /* Force ALL actions to stack vertically here for clarity */
+        /* NOTE: Since Stock/Unit Actions are removed, this mainly impacts Edit/Delete */
+        .action-buttons-group {
+            flex-direction: column;
+            align-items: stretch;
+            flex-wrap: nowrap;
+        }
+        .action-buttons-group .btn {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        .action-buttons-group:last-child {
+            flex-direction: row; /* Put edit/delete side-by-side */
+            margin-top: 5px;
+            gap: 5px;
+        }
+        .action-buttons-group:last-child .btn-icon-only {
+            flex-grow: 1;
+            width: auto;
+        }
     }
     
     @media (max-width: 768px) {
@@ -724,143 +891,230 @@ if (!empty($search_query)) {
         .content-area { padding: 15px; }
 
         /* Full mobile table stacking */
-        .table thead { display: none; } 
+        .table thead { display: none; }
         .table tbody, .table tr, .table td { display: block; width: 100%; }
         .table { min-width: auto; }
         
         /* === MOBILE CARD AESTHETICS IMPROVEMENT (CLEAN HIERARCHY) === */
-        .table tr { 
-            margin-bottom: 15px; 
+        .table tr {
+            margin-bottom: 15px;
             border: 1px solid #ccc;
             border-left: 5px solid var(--msu-red); /* Highlight left border */
-            border-radius: 8px; 
-            background-color: var(--card-background); 
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
-            padding: 0; 
+            border-radius: 8px;
+            background-color: var(--card-background);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 0;
             overflow: hidden;
         }
         
-        .table td { 
-            text-align: right !important; 
+        /* Reset table cell positioning for the card layout */
+        .table td {
+            text-align: right !important;
             padding-left: 50% !important;
             position: relative;
             border: none;
             border-bottom: 1px solid #eee; /* Lighter border separation */
-            padding: 10px 10px !important; 
+            padding: 10px 10px !important;
         }
         .table td:last-child { border-bottom: none; }
         
         /* --- 1. Header Group (ID, Image, Name) --- */
-        .table tbody td:nth-child(1), /* ID */
-        .table tbody td:nth-child(2), /* Image */
-        .table tbody td:nth-child(3) { /* Name */
-            padding: 10px 10px !important;
-            border-bottom: none; /* Removed internal border */
-        }
-        .table tbody td:nth-child(1)::before, 
-        .table tbody td:nth-child(2)::before {
-            display: none; /* Hide labels for ID/Image */
-        }
-        
-        .table tbody tr td:nth-child(1) { /* Top ID box */
+        .table tbody td:nth-child(1) { /* ID: Top-left pill */
             text-align: left !important;
             padding-left: 10px !important;
             font-size: 0.9rem;
             font-weight: 600;
             color: #6c757d;
-            border-bottom: 1px solid #eee;
+            background-color: #f8f8f8;
+            border-bottom: 1px solid #ddd;
+        }
+        .table tbody td:nth-child(1)::before {
+            display: none; /* Hide ID label */
         }
         
-        .table tbody tr td:nth-child(2) { /* Image and Name container */
-            display: flex; 
-            align-items: center; 
+        /* Combine Image and Name into one logical section (Cell 2 is the main container for mobile) */
+        .table tbody tr td:nth-child(2) {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
             text-align: left !important;
-            padding-left: 10px !important;
+            padding: 15px 10px 15px 10px !important;
             border-bottom: 2px solid #ddd;
-        }
-        .table tbody tr td:nth-child(3) { /* Name cell - becomes second part of the flexible container */
-            order: 2; /* Move name value next to the image */
-            flex-grow: 1;
+            position: relative;
             padding-left: 10px !important;
-            text-align: left !important;
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: var(--msu-red-dark);
-            border-bottom: 2px solid #ddd;
+            width: 100%;
+            height: auto;
         }
-        .table tbody tr td:nth-child(3)::before {
-            display: none; /* Hide Name label, name is now the title */
+        .table tbody tr td:nth-child(2)::before {
+            display: none; /* Hide Image label */
+        }
+        .table img {
+            width: 70px;
+            height: 70px;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        .table tbody tr td:nth-child(3) { /* Name cell - desktop only, hide it entirely in mobile view */
+             display: none;
+        }
+        
+        /* --- Use data-name-label in cell 2 for the name content in mobile --- */
+        .table tbody tr td:nth-child(2) .d-md-none { /* Target the span we added for the name */
+             display: block !important;
+             font-size: 1.1rem;
+             font-weight: 700;
+             color: var(--msu-red-dark);
+        }
+        .table tbody tr td:nth-child(2) .d-md-none::before {
+             content: attr(data-name-label); /* Show the implicit label in mobile name block */
+             display: block;
+             font-weight: 500;
+             font-size: 0.85rem;
+             color: #6c757d;
         }
         
         /* --- 2. Standard Labels (Clean Look) --- */
         .table td::before {
             content: attr(data-label);
-            background-color: var(--label-bg); 
-            color: var(--main-text); 
+            /* CRITICAL FIX: Removing background from the label area */
+            background-color: transparent;
+            border-right: none;
+            /* END FIX */
+            color: var(--main-text);
             font-weight: 600;
             font-size: 0.9rem;
-            border-right: 1px solid #ddd;
-            /* Resetting display for standard fields */
+            
             position: absolute;
             height: 100%;
             display: flex;
             align-items: center;
+            left: 0;
+            width: 50%;
+            padding: 10px; /* Add padding back to label */
+        }
+        /* Ensure standard cells have a light background for data alignment */
+        .table tbody td:nth-child(4),
+        .table tbody td:nth-child(5),
+        .table tbody td:nth-child(6),
+        .table tbody td:nth-child(7),
+        .table tbody td:nth-child(8),
+        .table tbody td:nth-child(11),
+        .table tbody td:nth-child(13),
+        .table tbody td:nth-child(14) {
+            display: block;
+            width: 100%;
+            border-bottom: 1px solid #eee;
+            background-color: var(--card-background);
         }
 
-        /* --- 3. Highlight Critical Stock --- */
-        .table tbody td:nth-child(9)::before { /* Damaged */
-            background-color: #fff3cd; /* Warning light */
-            color: #856404; /* Warning dark text */
-            border-right-color: #ffeeba;
+
+        /* --- 3. Highlight Critical Stock (FIXED) --- */
+        
+        /* Apply background to the ENTIRE Damaged TD (for the visual block) */
+        .table tbody td:nth-child(9) {
+            background-color: #fff3cd !important; /* Warning light background */
         }
-        .table tbody td:nth-child(10)::before { /* Lost */
-            background-color: #f8d7da; /* Danger light */
-            color: #721c24; /* Danger dark text */
-            border-right-color: #f5c6cb;
+        /* Ensure the Damaged label text is dark over the light background */
+        .table tbody td:nth-child(9)::before {
+            background-color: transparent !important; /* Clear the pseudo-element background */
+            color: #856404; /* Dark text color for readability */
         }
         
-        /* --- 4. Description Display --- */
-        .table tbody td:nth-child(12) { 
-            text-align: left !important; 
-            padding-left: 10px !important; 
-            font-size: 0.9rem;
-            border-bottom: none;
+        /* Apply background to the ENTIRE Lost TD (for the visual block) */
+        .table tbody td:nth-child(10) {
+            background-color: #f8d7da !important; /* Danger light background */
         }
-        .table tbody td:nth-child(12)::before {
+        /* Ensure the Lost label text is dark over the light background */
+        .table tbody td:nth-child(10)::before {
+            background-color: transparent !important; /* Clear the pseudo-element background */
+            color: #721c24; /* Dark text color for readability */
+        }
+        
+        /* Revert other cells that might have inherited the background */
+        .table tbody td:nth-child(4),
+        .table tbody td:nth-child(5),
+        .table tbody td:nth-child(6),
+        .table tbody td:nth-child(7),
+        .table tbody td:nth-child(8),
+        .table tbody td:nth-child(11),
+        .table tbody td:nth-child(13),
+        .table tbody td:nth-child(14) {
+            background-color: var(--card-background); /* Ensure standard cells are light */
+        }
+        
+        /* --- 4. Description Display (FINAL FIX: EXPANSION and SPACING) --- */
+        /* NOTE: Index changed from 12 to 11 */
+        .table tbody td:nth-child(11) {
+            text-align: left !important;
+            /* CRITICAL: Set padding to 10px on all sides, overriding the 50% left padding */
+            padding: 10px !important;
+            padding-bottom: 15px !important;
+            
+            font-size: 0.9rem;
+            border-bottom: 1px solid #eee;
+            display: block;
+            width: 100%; /* <<<<< FIX: Full width on mobile */
+            background-color: var(--card-background);
+            position: static; /* Important for flow */
+        }
+        
+        /* The header/label for the description needs to be displayed as a block *above* the content */
+        .table tbody td:nth-child(11)::before {
             content: "Description:";
             display: block;
-            position: static;
+            position: static; /* Forces it to flow normally, taking up space */
             width: 100%;
             height: auto;
             color: var(--main-text);
-            background: #f8f8f8; 
+            background: #f8f8f8; /* Keep light background for description header */
             font-weight: 600;
             padding: 10px;
             border-bottom: 1px solid #eee;
             margin-bottom: 5px;
             border-right: none;
+            /* Ensure the description header padding is correct */
+            margin-left: -10px; /* Offset the <td> padding */
+            margin-right: -10px; /* Offset the <td> padding */
+            padding-left: 10px; /* Restore internal padding */
+            padding-right: 10px;
         }
 
-        /* --- 5. Action Buttons --- */
-        .table td:nth-child(15),
-        .table td:nth-child(16) {
-             /* Combine action cells into one logical block with padding */
-            padding: 10px 10px 15px 10px !important; 
+        /* The actual description text (the span) must flow naturally below the header/label */
+        .table tbody td:nth-child(11) span {
+            display: block; /* <<<<< FIX: Force block display */
+            width: 100%;
+            white-space: normal;
+            word-break: break-word;
+            padding: 0; /* Remove inner span padding */
         }
-        .table td:nth-child(15)::before,
-        .table td:nth-child(16)::before {
+
+        /* --- 5. Action Buttons (Edit/Delete) --- */
+        /* NOTE: Index changed from 16 to 12 */
+        .table td:nth-child(12) {
+            border-bottom: none;
+            padding: 10px 10px 15px 10px !important;
+            text-align: center !important;
+            padding-left: 10px !important;
+            display: block;
+            width: 100%;
+            background-color: var(--card-background);
+            position: static; /* Ensure it flows correctly */
+        }
+        .table td:nth-child(12)::before {
             display: none;
         }
-        .action-buttons-group { 
-            flex-direction: row; /* Horizontal flow for edit/delete */
-            flex-wrap: wrap; /* Allow wrapping if needed */
-            gap: 5px; 
-            justify-content: center;
-            align-items: stretch; 
+        /* Edit/Delete group (12th cell) */
+        .table td:nth-child(12) .action-buttons-group {
+            flex-direction: row;
+            margin-top: 10px;
+            gap: 10px;
         }
-        .action-buttons-group .btn { flex-grow: 1; }
-        .action-buttons-group .btn-stock-action { width: 100%; }
-        .action-buttons-group:last-child { margin-top: 5px; } /* Separate Quick Stock from Edit/Delete */
+        .table td:nth-child(12) .action-buttons-group .btn-icon-only {
+            flex-grow: 1;
+            width: auto;
+            height: 44px;
+        }
     }
 
     /* Smallest Mobile adjustments */
@@ -870,11 +1124,12 @@ if (!empty($search_query)) {
             justify-content: flex-end;
             padding-left: 65px;
         }
-        .table tbody tr td:nth-child(3) { 
+        .table tbody tr td:nth-child(3) {
             font-size: 1rem;
         }
-        .action-buttons-group {
-             flex-direction: column; /* Force stack on smallest screens */
+        /* Reset to standard flow for the two icons */
+        .table td:nth-child(12) .action-buttons-group {
+            flex-direction: row;
         }
     }
 </style>
@@ -919,6 +1174,8 @@ if (!empty($search_query)) {
     </div>
 </div>
 
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
 <header class="top-header-bar">
     <ul class="navbar-nav mb-2 mb-lg-0">
         <li class="nav-item dropdown notification-bell-container">
@@ -960,9 +1217,14 @@ if (!empty($search_query)) {
         <div class="add-form">
             <?php if ($edit_id && $current_apparatus): ?>
                 <h3><i class="fas fa-edit me-2"></i> Edit Apparatus #<?= $edit_id ?></h3>
-                <form method="POST" enctype="multipart/form-data" class="row g-3">
+                <form method="POST" enctype="multipart/form-data" class="row g-3" id="editApparatusForm">
                     <input type="hidden" name="id" value="<?= $edit_id ?>">
                     <input type="hidden" name="old_image" value="<?= htmlspecialchars($current_image) ?>">
+                    
+                    <input type="hidden" id="original_total_stock" value="<?= $original_total_stock ?>">
+                    <input type="hidden" id="original_damaged_stock" value="<?= $original_damaged_stock ?>">
+                    <input type="hidden" id="original_lost_stock" value="<?= $original_lost_stock ?>">
+                    <input type="hidden" id="currently_out" value="<?= $currently_out ?>">
                     
                     <div class="col-md-4">
                         <label class="form-label">Apparatus Name:</label>
@@ -988,7 +1250,7 @@ if (!empty($search_query)) {
                     <div class="col-md-4">
                         <label class="form-label">Total Stock Quantity <span class="text-danger">*</span>:</label>
                         <input type="number" name="total_stock" class="form-control" min="1" value="<?= htmlspecialchars($total_stock ?? 1) ?>">
-                        <small class="text-muted">Currently Borrowed/Reserved: <?= htmlspecialchars($current_apparatus['currently_out'] ?? 0) ?> units.</small>
+                        <small class="text-muted">Currently Borrowed/Reserved: <?= htmlspecialchars($currently_out) ?> units.</small>
                         <?php if (isset($errors['total_stock'])): ?><span class="text-danger error"><?= htmlspecialchars($errors['total_stock']) ?></span><?php endif; ?>
                     </div>
 
@@ -1031,7 +1293,7 @@ if (!empty($search_query)) {
 
                     <div class="col-12">
                         <label class="form-label">Description (Usage and Details):</label>
-                        <textarea name="description" class="form-control" rows="3"><?= htmlspecialchars($description ?? '') ?></textarea>
+                        <textarea name="description" class="form-control" rows="8"><?= htmlspecialchars($description ?? '') ?></textarea>
                         <?php if (isset($errors['description'])): ?><span class="text-danger error"><?= htmlspecialchars($errors['description']) ?></span><?php endif; ?>
                     </div>
 
@@ -1049,7 +1311,10 @@ if (!empty($search_query)) {
                     
                     <div class="col-12 text-end">
                         <a href="staff_apparatus.php" class="btn btn-secondary me-2">Cancel Edit</a>
-                        <button type="submit" name="update_details" class="btn btn-warning">
+                        <button type="button" 
+                                id="saveChangesButton"
+                                class="btn btn-warning"
+                                onclick="showEditConfirmModal()">
                             <i class="fas fa-sync me-1"></i> Save Changes
                         </button>
                     </div>
@@ -1129,7 +1394,8 @@ if (!empty($search_query)) {
                     <?php if (isset($errors['stock_math'])): ?><div class="col-12"><span class="text-danger error fw-bold"><?= htmlspecialchars($errors['stock_math']) ?></span></div><?php endif; ?>
 
                     <div class="col-12">
-                        <label class="form-label">Description (Usage and Details) <span class="text-danger">*</span>:</label> <textarea name="description" class="form-control" rows="3"><?= htmlspecialchars($description ?? '') ?></textarea>
+                        <label class="form-label">Description (Usage and Details) <span class="text-danger">*</span>:</label> 
+                        <textarea name="description" class="form-control" rows="8"><?= htmlspecialchars($description ?? '') ?></textarea>
                         <?php if (isset($errors['description'])): ?><span class="text-danger error"><?= htmlspecialchars($errors['description']) ?></span><?php endif; ?>
                     </div>
 
@@ -1199,7 +1465,6 @@ if (!empty($search_query)) {
                         <th style="width: 15%;">Description</th> 
                         <th style="width: 7%;">Cond.</th> 
                         <th style="width: 7%;">Status</th>
-                        <th style="width: 15%;" class="unit-actions-cell">Stock / Unit Actions</th> 
                         <th style="width: 7%;">Edit</th> 
                     </tr>
                 </thead>
@@ -1210,9 +1475,10 @@ if (!empty($search_query)) {
                                 <td data-label="ID:"><?= $app['id'] ?></td>
                                 <td data-label="Image:">
                                     <img src="../uploads/apparatus_images/<?= htmlspecialchars($app['image'] ?? 'default.jpg') ?>" 
-                                            alt="<?= htmlspecialchars($app['name']) ?>">
+                                        alt="<?= htmlspecialchars($app['name']) ?>">
+                                    <span class="d-md-none text-start" data-name-label="Name:"><?= htmlspecialchars($app['name']) ?></span>
                                 </td>
-                                <td data-label="Name:" class="text-start"><?= htmlspecialchars($app['name']) ?></td>
+                                <td data-label="Name:" class="text-start d-none d-md-table-cell"><?= htmlspecialchars($app['name']) ?></td>
                                 <td data-label="Type:"><?= htmlspecialchars($app['apparatus_type']) ?></td>
                                 <td data-label="Size:"><?= htmlspecialchars($app['size']) ?></td>
                                 <td data-label="Material:"><?= htmlspecialchars($app['material']) ?></td>
@@ -1226,21 +1492,21 @@ if (!empty($search_query)) {
                                 
                                 <td data-label="Description:" class="text-start">
                                     <?php 
-                                        $description = htmlspecialchars($app['description'] ?? '');
-                                        $display_limit = 60;
-                                        $display_text = (strlen($description) > $display_limit) ? substr($description, 0, $display_limit) . '...' : $description;
+                                            $description = htmlspecialchars($app['description'] ?? '');
+                                            $display_limit = 60;
+                                            $display_text = (strlen($description) > $display_limit) ? substr($description, 0, $display_limit) . '...' : $description;
 
-                                        echo '<span 
-                                                tabindex="0" 
-                                                role="button"
-                                                data-bs-toggle="popover" 
-                                                data-bs-trigger="hover focus" 
-                                                data-bs-placement="bottom" 
-                                                data-bs-custom-class="description-popover" 
-                                                data-bs-title="Full Description" 
-                                                data-bs-content="' . $description . '">' . $display_text . 
-                                                '</span>';
-                                    ?>
+                                            echo '<span 
+                                                    tabindex="0" 
+                                                    role="button"
+                                                    data-bs-toggle="popover" 
+                                                    data-bs-trigger="hover focus" 
+                                                    data-bs-placement="bottom" 
+                                                    data-bs-custom-class="description-popover" 
+                                                    data-bs-title="Full Description" 
+                                                    data-bs-content="' . $description . '">' . $display_text . 
+                                                    '</span>';
+                                     ?>
                                 </td>
                                 
                                 <td data-label="Condition:">
@@ -1254,32 +1520,6 @@ if (!empty($search_query)) {
                                     </span>
                                 </td>
                                 
-                                <td data-label="Stock / Unit Actions:" class="text-center unit-actions-cell">
-                                    <div class="action-buttons-group">
-                                        <button type="button" 
-                                            class="btn btn-sm btn-primary btn-stock-action" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#quickUpdateModal"
-                                            data-id="<?= $app['id'] ?>"
-                                            data-name="<?= htmlspecialchars($app['name']) ?>"
-                                            data-total="<?= htmlspecialchars($app['total_stock'] ?? 0) ?>"
-                                            data-damaged="<?= htmlspecialchars($app['damaged_stock'] ?? 0) ?>"
-                                            data-lost="<?= htmlspecialchars($app['lost_stock'] ?? 0) ?>"
-                                            data-out="<?= htmlspecialchars($app['currently_out'] ?? 0) ?>">
-                                            <i class="fas fa-boxes me-1"></i> Quick Stock
-                                        </button>
-                                        
-                                        <button type="button" 
-                                            class="btn btn-sm btn-info btn-stock-action" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#unitManageModal"
-                                            data-type-id="<?= $app['id'] ?>"
-                                            data-name="<?= htmlspecialchars($app['name']) ?>">
-                                            <i class="fas fa-wrench me-1"></i> Manage Units
-                                        </button>
-                                    </div>
-                                </td>
-
                                 <td data-label="Edit:">
                                     <div class="action-buttons-group">
                                         <a href="staff_apparatus.php?edit_id=<?= $app['id'] ?>" 
@@ -1302,120 +1542,10 @@ if (!empty($search_query)) {
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="16" class="text-muted py-3">No apparatus found for the selected filter or search query.</td></tr>
+                        <tr><td colspan="15" class="text-muted py-3">No apparatus found for the selected filter or search query.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="quickUpdateModal" tabindex="-1" aria-labelledby="quickUpdateModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="quickUpdateModalLabel">
-                    <i class="fas fa-boxes fa-fw me-1"></i> Quick Stock Adjustment
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form id="modalQuickUpdateForm" method="POST">
-                <div class="modal-body">
-                    <h5 class="mb-3 text-center fw-bold text-dark">
-                        <span id="modalAppName"></span> (ID: <span id="modalAppId"></span>)
-                    </h5>
-                    
-                    <p class="text-danger small fw-bold text-center">
-                        <i class="fas fa-exclamation-triangle"></i> Currently Borrowed/Reserved: <span id="modalItemsOut">0</span> units.
-                    </p>
-
-                    <div class="stock-input-group row g-3 text-center">
-                        <div class="col-4">
-                            <label for="modalTotalStock" class="form-label">Total Stock</label>
-                            <input type="number" name="total_stock" id="modalTotalStock" class="form-control" min="1" required>
-                        </div>
-                        <div class="col-4">
-                            <label for="modalDamagedStock" class="form-label text-warning">Damaged Stock</label>
-                            <input type="number" name="damaged_stock" id="modalDamagedStock" class="form-control" min="0">
-                        </div>
-                        <div class="col-4">
-                            <label for="modalLostStock" class="form-label text-danger">Lost Stock</label>
-                            <input type="number" name="lost_stock" id="modalLostStock" class="form-control" min="0">
-                        </div>
-                    </div>
-                    
-                    <div class="alert alert-info mt-3 py-2 text-center" role="alert">
-                        New Available Stock: <strong id="modalNewAvailable">0</strong> units
-                    </div>
-                    
-                    <p class="text-danger small mt-2 fw-bold" id="stockWarning" style="display: none;">
-                        <i class="fas fa-hand-paper"></i> Error: Available units cannot be less than Currently Borrowed units (<span id="warningItemsOut"></span>).
-                    </p>
-
-                    <input type="hidden" name="apparatus_id" id="modalUpdateApparatusId">
-                    <input type="hidden" name="quick_update_stock" value="1">
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="confirmQuickUpdate">Confirm Update</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="unitManageModal" tabindex="-1" aria-labelledby="unitManageModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-scrollable modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-info text-white">
-                <h5 class="modal-title" id="unitManageModalLabel">
-                    <i class="fas fa-boxes me-2"></i> Manage Individual Units: <span id="modalUnitAppName"></span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="text-muted small">Use the actions below to adjust the condition of damaged/lost units (e.g., repair or recovery). Units marked **Damaged** or **Lost** are considered **Unavailable**.</p>
-                <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width: 10%">Unit ID</th>
-                                <th style="width: 25%">Serial Number</th>
-                                <th style="width: 20%">Condition</th>
-                                <th style="width: 20%">Status</th>
-                                <th style="width: 25%">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="unitListBody">
-                            <tr><td colspan="5" class="text-center text-muted">Loading unit data...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="restoreConfirmModal" tabindex="-1" aria-labelledby="restoreConfirmModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="restoreConfirmModalLabel">
-                    <i class="fas fa-wrench me-2"></i> Confirm Unit Restoration
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center">
-                <p>Are you sure you want to restore Unit ID <span id="modalRestoreUnitId" class="fw-bold"></span> to GOOD/AVAILABLE status?</p>
-                <p class="text-success fw-bold">This will decrement the Damaged/Lost count and increase the Available Stock.</p>
-            </div>
-            <div class="modal-footer justify-content-center">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" id="confirmRestoreBtn">OK</button>
-            </div>
         </div>
     </div>
 </div>
@@ -1445,125 +1575,170 @@ if (!empty($search_query)) {
   </div>
 </div>
 
+<div class="modal fade" id="editStockConfirmModal" tabindex="-1" aria-labelledby="editStockConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title" id="editStockConfirmModalLabel"><i class="fas fa-exclamation-triangle me-2"></i> Confirm Stock Changes</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <p>You are about to change the stock counts for **<span id="editConfirmName" class="fw-bold"></span>**.</p>
+          
+          <div id="edit-change-summary">
+              </div>
+          
+          <div class="alert alert-warning py-2 small mt-3" role="alert">
+              <i class="fas fa-info-circle me-1"></i> Confirm these changes to proceed. This action will adjust the status of individual units in the database.
+          </div>
+          
+          <form method="POST" id="confirmEditStockForm">
+              <input type="hidden" name="id" id="confirm_id">
+              <input type="hidden" name="name" id="confirm_name">
+              <input type="hidden" name="type" id="confirm_type">
+              <input type="hidden" name="size" id="confirm_size">
+              <input type="hidden" name="material" id="confirm_material">
+              <input type="hidden" name="description" id="confirm_description">
+              <input type="hidden" name="total_stock" id="confirm_total_stock">
+              <input type="hidden" name="damaged_stock" id="confirm_damaged_stock">
+              <input type="hidden" name="lost_stock" id="confirm_lost_stock">
+              <input type="hidden" name="old_image" id="confirm_old_image">
+              <input type="hidden" name="update_details" value="1">
+          </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-info" id="confirmEditStockBtn">Yes, Proceed with Stock Update</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
 <script>
     // Global variable to hold the ID of the unit currently being restored
     let currentUnitIdToRestore = null;
     
-    // --- START: JAVASCRIPT FOR SYSTEM NOTIFICATION (Bell Alert) - ADDED ---
+    // --- START: JAVASCRIPT FOR EDIT FORM CONFIRMATION MODAL ---
 
-    // 1. New global function to handle marking ALL staff notifications as read
-    window.markAllStaffAsRead = function() {
-        // We use the generalized API endpoint for staff batch read
-        $.post('../api/mark_notification_as_read.php', { mark_all: true, role: 'staff' }, function(response) {
-            if (response.success) {
-                // Reload the page to clear the badge and update the list
-                window.location.reload(); 
+    window.showEditConfirmModal = function() {
+        // 0. Perform client-side validation first
+        if (!document.getElementById('editApparatusForm').checkValidity()) {
+            // If the form is invalid, trigger the browser's default validation messages
+            document.getElementById('saveChangesButton').click(); // Re-trigger validation for error display
+            return;
+        }
+
+        // 1. Gather current values from the Edit form
+        const form = document.getElementById('editApparatusForm');
+        const apparatusId = parseInt(form.elements['id'].value);
+        const apparatusName = form.elements['name'].value;
+        const newTotal = parseInt(form.elements['total_stock'].value);
+        const newDamaged = parseInt(form.elements['damaged_stock'].value);
+        const newLost = parseInt(form.elements['lost_stock'].value);
+
+        // 2. Gather original values from hidden fields
+        const originalTotal = parseInt(document.getElementById('original_total_stock').value);
+        const originalDamaged = parseInt(document.getElementById('original_damaged_stock').value);
+        const originalLost = parseInt(document.getElementById('original_lost_stock').value);
+        const currentlyOut = parseInt(document.getElementById('currently_out').value);
+
+        // --- VALIDATION CHECKS (Should pass if form.checkValidity() worked, but good to reconfirm) ---
+        if (newTotal <= 0 || newDamaged < 0 || newLost < 0) {
+             alert("Validation Error: Stock counts must be valid non-negative numbers, and Total Stock must be > 0.");
+             return;
+        }
+        
+        // Calculate new available physical stock
+        const newAvailablePhysical = newTotal - newDamaged - newLost;
+
+        if (newAvailablePhysical < 0) {
+            alert("Validation Error: Damaged/Lost stock exceeds Total Stock.");
+            return;
+        }
+        if (newAvailablePhysical < currentlyOut) {
+            alert(`Validation Error: Cannot set stock counts that result in fewer physically available units (${newAvailablePhysical}) than currently borrowed/reserved (${currentlyOut}).`);
+            return;
+        }
+        // --- END VALIDATION ---
+        
+        // 3. Determine which stock values actually changed
+        let changes = [];
+
+        if (newTotal !== originalTotal) {
+            changes.push(`**Total Stock**: changed from <span class="text-danger">${originalTotal}</span> to <span class="text-success">${newTotal}</span>.`);
+        }
+        if (newDamaged !== originalDamaged) {
+            changes.push(`**Damaged Stock**: changed from <span class="text-warning">${originalDamaged}</span> to <span class="text-warning">${newDamaged}</span>.`);
+        }
+        if (newLost !== originalLost) {
+            changes.push(`**Lost Stock**: changed from <span class="text-danger">${originalLost}</span> to <span class="text-danger">${newLost}</span>.`);
+        }
+
+        // 4. Update the Modal Content
+        const $modalBody = $('#edit-change-summary');
+        
+        $('#editConfirmName').text(apparatusName);
+        
+        if (changes.length > 0) {
+            $modalBody.html('<p class="fw-bold">The following stock counts will be updated:</p><ul><li>' + changes.join('</li><li>') + '</li></ul>');
+        } else {
+            // Check if ANY field changed (non-stock related)
+            const otherFieldsChanged = Array.from(form.elements).some(element => {
+                if (element.name && !['total_stock', 'damaged_stock', 'lost_stock', 'id', 'old_image', 'new_apparatus_image'].includes(element.name) && element.value !== element.defaultValue) {
+                    return true;
+                }
+                return false;
+            });
+
+            if (otherFieldsChanged) {
+                 $modalBody.html('<p class="fw-bold text-success">No stock counts were modified, but other details (Name, Type, Description, etc.) will be updated.</p>');
             } else {
-                console.error("Failed to mark all staff notifications as read.");
-                alert("Failed to clear all notifications.");
+                 // No changes at all - prevent modal show and alert user
+                 alert("No changes were made to the apparatus details or stock counts.");
+                 return;
             }
-        }).fail(function() {
-            console.error("API call failed.");
+        }
+        
+        // 5. Populate the hidden form fields in the modal for submission
+        $('#confirmEditStockForm #confirm_id').val(form.elements['id'].value);
+        $('#confirmEditStockForm #confirm_name').val(form.elements['name'].value);
+        $('#confirmEditStockForm #confirm_type').val(form.elements['type'].value);
+        $('#confirmEditStockForm #confirm_size').val(form.elements['size'].value);
+        $('#confirmEditStockForm #confirm_material').val(form.elements['material'].value);
+        $('#confirmEditStockForm #confirm_description').val(form.elements['description'].value);
+        $('#confirmEditStockForm #confirm_total_stock').val(newTotal);
+        $('#confirmEditStockForm #confirm_damaged_stock').val(newDamaged);
+        $('#confirmEditStockForm #confirm_lost_stock').val(newLost);
+        $('#confirmEditStockForm #confirm_old_image').val(form.elements['old_image'].value);
+
+        // 6. Set up the confirmation button handler
+        $('#confirmEditStockBtn').off('click').on('click', function() {
+            // Handle Image file transfer (files cannot be passed in hidden fields, must be re-attached)
+            const newImageInput = form.elements['new_apparatus_image'];
+            if (newImageInput && newImageInput.files.length > 0) {
+                // Since we are submitting the hidden modal form, we must copy the file data
+                const confirmForm = document.getElementById('confirmEditStockForm');
+                const fileClone = newImageInput.cloneNode(true);
+                fileClone.id = 'confirm_new_apparatus_image'; // Give it a unique ID
+                fileClone.name = 'new_apparatus_image'; // Use the correct POST name
+                
+                // Temporarily append to the confirmation form
+                confirmForm.appendChild(fileClone);
+            }
+            
+            // Submit the modal's hidden form
+            document.getElementById('confirmEditStockForm').submit();
         });
+
+        // 7. Show the modal
+        const confirmModal = new bootstrap.Modal(document.getElementById('editStockConfirmModal'));
+        confirmModal.show();
     };
-    
-    // 2. New global function to handle single notification click (Mark as read + navigate)
-    window.handleNotificationClick = function(event, element, notificationId) {
-        event.preventDefault(); 
-        const linkHref = element.getAttribute('href');
 
-        // Use the generalized API endpoint to mark the single alert as read
-        $.post('../api/mark_notification_as_read.php', { notification_id: notificationId, role: 'staff' }, function(response) {
-            if (response.success) {
-                // Navigate after marking as read
-                window.location.href = linkHref;
-            } else {
-                console.error("Failed to mark notification as read. Navigating anyway.");
-                window.location.href = linkHref;
-            }
-        }).fail(function() {
-            console.error("API call failed. Navigating anyway.");
-            window.location.href = linkHref;
-        });
-    };
-
-    // 3. Function to fetch the count and populate the dropdown
-    function fetchStaffNotifications() {
-        // NOTE: Uses the generalized API endpoint
-        const apiPath = '../api/get_notifications.php'; 
-
-        $.getJSON(apiPath, function(response) { 
-            
-            const unreadCount = response.count; 
-            const notifications = response.alerts || []; 
-            
-            const $badge = $('#notification-bell-badge');
-            const $dropdown = $('#notification-dropdown');
-            
-            // Find static elements
-            const $markAllLink = $dropdown.find('.mark-all-link').detach();
-            const $viewAllLink = $dropdown.find('a[href="staff_pending.php"]').detach();
-
-            // Clear previous dynamic items
-            $dropdown.find('.dynamic-notif-item').remove(); 
-            
-            // 1. Update the Badge Count
-            $badge.text(unreadCount);
-            $badge.toggle(unreadCount > 0); 
-
-            // 2. Populate the Dropdown Menu
-            const $placeholder = $dropdown.find('.dynamic-notif-placeholder').empty();
-            
-            if (notifications.length > 0) {
-
-                notifications.slice(0, 5).forEach(notif => {
-                    
-                    let iconClass = 'fas fa-info-circle text-info'; 
-                    if (notif.type.includes('form_pending')) {
-                         iconClass = 'fas fa-hourglass-half text-warning';
-                    } else if (notif.type.includes('checking')) {
-                         iconClass = 'fas fa-redo text-primary';
-                    }
-                    
-                    const is_read = notif.is_read == 1;
-                    const itemClass = is_read ? 'text-muted' : 'fw-bold'; // Highlight unread
-
-                    $placeholder.append(`
-                        <a class="dropdown-item d-flex align-items-center dynamic-notif-item ${itemClass}" 
-                            href="${notif.link}"
-                            data-id="${notif.id}"
-                            onclick="handleNotificationClick(event, this, ${notif.id})">
-                            <div class="me-3"><i class="${iconClass} fa-fw"></i></div>
-                            <div>
-                                <div class="small text-gray-500">${notif.created_at.split(' ')[0]}</div>
-                                <span class="d-block">${notif.message}</span>
-                            </div>
-                        </a>
-                    `);
-                });
-            } else {
-                // Display a "No Alerts" message
-                $placeholder.html(`
-                    <a class="dropdown-item text-center small text-muted dynamic-notif-item">No New Notifications</a>
-                `);
-            }
-            
-            // Re-append the Mark All link and View All link in order
-            if (unreadCount > 0) {
-                   $dropdown.append($markAllLink);
-            }
-            $dropdown.append($viewAllLink);
-            
-
-        }).fail(function(jqXHR, textStatus, errorThrown) {
-            console.error("Error fetching staff notifications:", textStatus, errorThrown);
-            // Ensure the badge is hidden on failure
-            $('#notification-bell-badge').text('0').hide();
-        });
-    }
-    // --- END: JAVASCRIPT FOR SYSTEM NOTIFICATION ---
+    // --- END: JAVASCRIPT FOR EDIT FORM CONFIRMATION MODAL ---
 
 
     // --- Core Logic to Trigger Submission (Used by the new modal) ---
@@ -1604,17 +1779,6 @@ if (!empty($search_query)) {
     window.previewImage = previewImage; // Make accessible globally
 
 
-    // --- NEW FIX: This function MUST only open the Bootstrap modal ---
-    window.handleRestoreUnit = function(unitId) {
-        currentUnitIdToRestore = unitId;
-        // 1. Set the unit ID in the modal text
-        document.getElementById('modalRestoreUnitId').textContent = unitId;
-        
-        // 2. Display the Bootstrap Modal
-        const restoreConfirmModal = new bootstrap.Modal(document.getElementById('restoreConfirmModal'));
-        restoreConfirmModal.show();
-    }
-
     // --- JS Initialization ---
     document.addEventListener('DOMContentLoaded', () => {
         // Sidebar active link script
@@ -1630,35 +1794,71 @@ if (!empty($search_query)) {
             }
         });
         
-        // New Mobile Toggle Logic
+        // --- NEW DESKTOP COLLAPSE LOGIC (MODIFIED FOR PERMANENTLY OPEN SIDEBAR) ---
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
-        const mainContent = document.querySelector('.main-content'); 
+        const sidebarBackdrop = document.getElementById('sidebarBackdrop'); 
+        
+        // Function to set the initial state (open on desktop, closed on mobile)
+        function setInitialState() {
+            if (window.innerWidth > 992) {
+                // Desktop: Default is permanently OPEN, remove all collapse/active classes
+                sidebar.classList.remove('closed');
+                sidebar.classList.remove('active');
+                if (sidebarBackdrop) sidebarBackdrop.style.display = 'none';
+                // **CRITICAL FIX: Hide the burger button on desktop**
+                if (menuToggle) menuToggle.style.display = 'none'; 
+            } else {
+                // Mobile: Default is hidden, but keep menu toggle visible for mobile
+                sidebar.classList.remove('closed');
+                sidebar.classList.remove('active');
+                if (sidebarBackdrop) sidebarBackdrop.style.display = 'none';
+                if (menuToggle) menuToggle.style.display = 'flex'; // Show for mobile
+            }
+        }
+        
+        // Function to toggle the state of the sidebar and layout
+        function toggleSidebar() {
+            if (window.innerWidth <= 992) {
+                // Mobile behavior: Toggle 'active' class for overlay/menu
+                sidebar.classList.toggle('active');
+                if (sidebarBackdrop) {
+                    sidebarBackdrop.style.display = sidebar.classList.contains('active') ? 'block' : 'none';
+                }
+            } else {
+                // Desktop behavior: DO NOTHING - Sidebar is permanently open
+            }
+        }
 
         if (menuToggle && sidebar) {
-            menuToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('active');
-                if (sidebar.classList.contains('active')) {
-                     mainContent.addEventListener('click', closeSidebarOnce);
-                } else {
-                     mainContent.removeEventListener('click', closeSidebarOnce);
-                }
-            });
+            menuToggle.addEventListener('click', toggleSidebar);
             
-            function closeSidebarOnce() {
-                 sidebar.classList.remove('active');
-                 mainContent.removeEventListener('click', closeSidebarOnce);
+            // Backdrop click handler (only for mobile overlay)
+            if (sidebarBackdrop) {
+                sidebarBackdrop.addEventListener('click', () => {
+                    sidebar.classList.remove('active'); // Close mobile overlay
+                    sidebarBackdrop.style.display = 'none';
+                });
             }
             
+            // Hide mobile overlay when navigating
             const navLinks = sidebar.querySelectorAll('.nav-link');
             navLinks.forEach(link => {
                  link.addEventListener('click', () => {
                      if (window.innerWidth <= 992) {
-                        sidebar.classList.remove('active');
+                         sidebar.classList.remove('active');
+                         sidebarBackdrop.style.display = 'none';
                      }
                  });
             });
+
+            // Handle window resize (switching between mobile/desktop layouts)
+            window.addEventListener('resize', setInitialState);
+
+            // Set initial state on load
+            setInitialState();
         }
+        // --- END NEW DESKTOP COLLAPSE LOGIC ---
         
         // Delete Modal Handler (Existing)
         const deleteModal = document.getElementById('deleteApparatusModal');
@@ -1680,154 +1880,6 @@ if (!empty($search_query)) {
         const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');
         [...popoverTriggerList].map(popoverTriggerEl => new bootstrap.Popover(popoverTriggerEl));
 
-
-        // --- QUICK UPDATE MODAL LOGIC FOR QUANTITIES (EXISTING) ---
-        const quickUpdateModal = document.getElementById('quickUpdateModal');
-        const modalTotalStock = document.getElementById('modalTotalStock');
-        const modalDamagedStock = document.getElementById('modalDamagedStock');
-        const modalLostStock = document.getElementById('modalLostStock');
-        const modalNewAvailable = document.getElementById('modalNewAvailable');
-        const modalItemsOut = document.getElementById('modalItemsOut');
-        const stockWarning = document.getElementById('stockWarning');
-        const warningItemsOut = document.getElementById('warningItemsOut');
-        const confirmQuickUpdate = document.getElementById('confirmQuickUpdate');
-        
-        let currentlyOut = 0;
-
-        function calculateAvailable() {
-            const total = parseInt(modalTotalStock.value) || 0;
-            const damaged = parseInt(modalDamagedStock.value) || 0;
-            const lost = parseInt(modalLostStock.value) || 0;
-            
-            const physicalAvailable = total - damaged - lost;
-            const actualPhysicalGoodStock = physicalAvailable;
-
-            // This calculates the total number of units that can be borrowed/are available.
-            // It must be at least 0. If stock levels are reduced while items are out, 
-            // the new 'available' stock will reflect the reduction but won't go below zero.
-            modalNewAvailable.textContent = Math.max(0, actualPhysicalGoodStock - currentlyOut); 
-            
-            if (physicalAvailable < currentlyOut) {
-                stockWarning.style.display = 'block';
-                modalNewAvailable.classList.remove('text-success');
-                modalNewAvailable.classList.add('text-danger');
-                confirmQuickUpdate.disabled = true;
-            } else {
-                stockWarning.style.display = 'none';
-                modalNewAvailable.classList.remove('text-danger');
-                modalNewAvailable.classList.add('text-success');
-                confirmQuickUpdate.disabled = false;
-            }
-        }
-        
-        if (modalTotalStock) modalTotalStock.addEventListener('input', calculateAvailable);
-        if (modalDamagedStock) modalDamagedStock.addEventListener('input', calculateAvailable);
-        if (modalLostStock) modalLostStock.addEventListener('input', calculateAvailable);
-
-
-        if (quickUpdateModal) {
-            quickUpdateModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-                const id = button.getAttribute('data-id');
-                const name = button.getAttribute('data-name');
-                const total = parseInt(button.getAttribute('data-total'));
-                const damaged = parseInt(button.getAttribute('data-damaged'));
-                const lost = parseInt(button.getAttribute('data-lost'));
-                currentlyOut = parseInt(button.getAttribute('data-out'));
-                
-                modalItemsOut.textContent = currentlyOut;
-                warningItemsOut.textContent = currentlyOut;
-
-                quickUpdateModal.querySelector('#modalAppName').textContent = name;
-                quickUpdateModal.querySelector('#modalAppId').textContent = id;
-                modalTotalStock.value = total;
-                modalDamagedStock.value = damaged;
-                modalLostStock.value = lost;
-                
-                quickUpdateModal.querySelector('#modalUpdateApparatusId').value = id;
-                
-                calculateAvailable(); 
-            });
-        }
-        
-        // --- UNIT MANAGEMENT MODAL LOGIC (AJAX rendering) ---
-        const unitManageModalElement = document.getElementById('unitManageModal'); // Renamed to Element
-        const unitListBody = document.getElementById('unitListBody');
-
-        if (unitManageModalElement) {
-            unitManageModalElement.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-                const typeId = button.getAttribute('data-type-id');
-                const name = button.getAttribute('data-name');
-                
-                unitManageModalElement.querySelector('#modalUnitAppName').textContent = name;
-                unitListBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading unit data...</td></tr>';
-                
-                // --- AJAX Fetch Call to staff_get_units.php ---
-                fetch(`staff_get_units.php?type_id=${typeId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        unitListBody.innerHTML = '';
-                        if (data.units && data.units.length > 0) {
-                            data.units.forEach(unit => {
-                                // Determine if the unit is restorable (Damaged or Lost, but NOT borrowed)
-                                const isDamaged = unit.current_condition === 'damaged';
-                                const isLost = unit.current_condition === 'lost';
-                                const isRestorable = isDamaged || isLost; // FIX: Check for both damaged or lost
-                                
-                                let buttonHtml;
-                                if (isRestorable) {
-                                    // Calls the handler function which opens the Bootstrap modal
-                                    buttonHtml = `<button type="button" 
-                                                            class="btn btn-sm btn-success restore-unit-btn" 
-                                                            data-unit-id="${unit.unit_id}">
-                                                           <i class="fas fa-wrench me-1"></i> Restore
-                                                          </button>`;
-                                } else if (unit.current_condition === 'good' && unit.current_status === 'available') {
-                                    buttonHtml = `<button class="btn btn-sm btn-secondary" disabled>No Action</button>`;
-                                } else {
-                                    // For 'borrowed', 'checking', etc.
-                                    buttonHtml = `<button class="btn btn-sm btn-dark" disabled>${unit.current_status.charAt(0).toUpperCase() + unit.current_status.slice(1)}</button>`;
-                                }
-                                
-                                const row = `
-                                    <tr>
-                                        <td>${unit.unit_id}</td>
-                                        <td>${unit.serial_number || 'N/A'}</td>
-                                        <td>
-                                            <span class="status-tag ${unit.current_condition}">
-                                                ${unit.current_condition.charAt(0).toUpperCase() + unit.current_condition.slice(1)}
-                                            </span>
-                                        </td>
-                                        <td>${unit.current_status}</td>
-                                        <td>${buttonHtml}</td>
-                                    </tr>`;
-                                unitListBody.insertAdjacentHTML('beforeend', row);
-                            });
-                            
-                            // Attach click listener for restore button (attaches to the new confirmation modal handler)
-                            document.querySelectorAll('.restore-unit-btn').forEach(btn => {
-                                btn.addEventListener('click', function() {
-                                    window.handleRestoreUnit(btn.getAttribute('data-unit-id')); // Call global handler
-                                });
-                            });
-                            
-                        } else {
-                            unitListBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No units found for this apparatus type.</td></tr>';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error fetching units:', error);
-                        unitListBody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load unit data. (Check staff_get_units.php)</td></tr>';
-                    });
-            });
-        }
-        
-        // --- RESTORE CONFIRMATION HANDLER (Final Submit from Modal) ---
-        // This is attached to the green 'OK' button inside the Bootstrap modal
-        document.getElementById('confirmRestoreBtn').addEventListener('click', function() {
-            executeRestoreUnitSubmission(); 
-        });
 
         // --- AUTOHIDE LOGIC ---
         const statusAlert = document.getElementById('status-alert');
