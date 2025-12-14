@@ -160,24 +160,40 @@ class Mailer {
     /**
      * Sends the password reset code email.
      */
+/**
+     * Sends the password reset code email.
+     */
     public function sendResetCodeEmail($recipientEmail, $code) {
         try {
             $this->mail->clearAddresses();
             $this->mail->addAddress($recipientEmail);
 
             $subject = 'CSM Borrowing System Password Reset Code';
-
+            
+            // NOTE: We use body_verification template for the layout consistency
+            // and adapt the content via str_replace below.
             $variables = [
                 'SUBJECT' => $subject,
                 'VERIFICATION_CODE' => $code, 
                 'RECIPIENT_NAME' => 'User',
             ];
             
+            // 1. Load the template content (body_verification template)
             $bodyHtml = $this->loadTemplate('body_verification', $variables); 
             
+            // 2. Adjust the specific text to reflect a password reset instead of registration
             $bodyHtml = str_replace('Account Verification', 'Password Reset Code', $bodyHtml);
-            $bodyHtml = str_replace('to activate your borrowing privileges:', 'to reset your password. This code is valid for 10 minutes:', $bodyHtml);
-            $bodyHtml = str_replace('Verification Link:', 'Code:', $bodyHtml); 
+            $bodyHtml = str_replace('to activate your borrowing privileges:', 'to reset your password. This code is valid for a limited time:', $bodyHtml);
+            // $bodyHtml = str_replace('Verification Link:', 'Code:', $bodyHtml); // This replacement might be unnecessary if not in your template
+
+            // ************************************************************
+            // *** CRITICAL FIX: ASSIGN THE BODY AND ALT BODY CONTENT ***
+            // ************************************************************
+            $this->mail->Subject = $subject;
+            $this->mail->Body = $bodyHtml; // <--- THIS LINE WAS MISSING
+            $this->mail->AltBody = "Your password reset code is: " . $code; // <--- THIS LINE WAS MISSING
+            
+            // ************************************************************
 
             return $this->mail->send();
 

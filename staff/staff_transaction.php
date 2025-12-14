@@ -10,13 +10,50 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'staff') {
 
 $transaction = new Transaction();
 
-// --- CRITICAL FIX 1: Read the desired filter and search term ---
-$filter = $_GET['filter'] ?? 'all';
-$search = $_GET['search'] ?? '';
+// --- 1. RETRIEVE ALL FILTER PARAMETERS (Matches the form fields) ---
+$status_filter = $_GET['status_filter'] ?? 'all'; 
+$search_term = $_GET['search'] ?? '';
+$start_date = $_GET['start_date'] ?? '';
+$end_date = $_GET['end_date'] ?? '';
 
-// 1. Data Retrieval (Assuming getAllFormsFiltered accepts these parameters)
-$transactions = $transaction->getAllFormsFiltered($filter, $search);
+// MODIFIED: Apparatus filter is now an array (multi-select)
+$apparatus_ids = $_GET['apparatus_ids'] ?? [];
+$apparatus_ids = array_filter(is_array($apparatus_ids) ? $apparatus_ids : []);
+$apparatus_ids_str = array_map('strval', $apparatus_ids); // String version for comparison
 
+// NOTE: Since multi-select is now client-side, we pass an empty/single filter to the backend.
+// We'll pass the first ID to the backend query if any are selected, or keep it empty.
+$backend_apparatus_filter = empty($apparatus_ids_str) ? '' : $apparatus_ids_str[0];
+
+$apparatus_type = ''; // Apparatus Type filter is permanently disabled/removed
+// ------------------------------------------------------------------
+
+// --- DATA RETRIEVAL FOR DROPDOWNS (Assuming these methods exist) ---
+$allApparatus = $transaction->getAllApparatus() ?? [];
+// ------------------------------------------------------------------
+
+// --- 2. FETCH TRANSACTIONS using ALL filters ---
+// Fetch transactions filtered by the main criteria (Status, Date, Search). 
+// Since backend doesn't support multi-ID, we rely on the PHP display filter below.
+$transactions = $transaction->getAllFormsFiltered(
+    $status_filter, 
+    $search_term, 
+    $start_date, 
+    $end_date,
+    $backend_apparatus_filter, // Use the first ID or none, rely on display filtering
+    $apparatus_type 
+);
+// ------------------------------------------------------------------
+
+// --- Helper function (needs to stay here or be moved to Transaction class) ---
+function isOverdue($expected_return_date) {
+    if (!$expected_return_date) return false;
+    $expected_date = new DateTime($expected_return_date);
+    $today = new DateTime();
+    // Compare dates only (ignore time)
+    return $expected_date->format('Y-m-d') < $today->format('Y-m-d');
+}
+// -----------------------------------------------------------------------------
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -73,7 +110,6 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             border: none;
             padding: 8px 12px;
             border-radius: 6px;
-            font-size: 1.2rem;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
@@ -236,6 +272,28 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             font-size: 2rem; 
         }
         
+        /* --- FILTER FORM STYLING FOR BETTER UI --- */
+        .filter-group {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 25px;
+            background-color: #f9f9f9;
+        }
+        .filter-group .form-label {
+            font-weight: 600;
+            color: var(--main-text);
+            margin-bottom: 5px;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+            /* Ensure buttons stretch nicely */
+            width: 100%; 
+        }
+        /* --- END FILTER FORM STYLING --- */
+
+
         
         .table-responsive {
             border-radius: 8px;
@@ -347,13 +405,17 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             .page-header { font-size: 1.8rem; }
             
             /* Filter/Search stacking below 992px */
-            #transactionFilterForm .d-flex { flex-direction: column; align-items: stretch !important; }
-            #transactionFilterForm .d-flex > * { width: 100%; margin-bottom: 10px; }
-            #transactionFilterForm .form-select-sm { width: 100% !important; }
+            .filter-group .row > div {
+                margin-top: 10px;
+            }
+            .filter-group .row > div:first-child { margin-top: 0; }
+            .filter-actions {
+                flex-direction: column; /* Stack buttons vertically on tablets */
+            }
         }
 
         @media (max-width: 768px) {
-             /* When using the no-rowspan method, standard mobile stacking works better */
+            /* Mobile Stacking for tables (replaces horizontal scroll) */
              .table { min-width: auto; }
              .table thead { display: none; }
              .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
@@ -446,7 +508,33 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
              .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
              .content-area { padding: 10px; }
              .top-header-bar { padding-left: 65px; }
+             .filter-actions { flex-direction: column; } /* Keep buttons stacked on small phones */
         }
+        
+        /* Multi-select filter UI styles (copied from staff_report.php for consistency) */
+        .multi-select-container { position: relative; z-index: 10; }
+        .multi-select-dropdown {
+            position: absolute; width: 100%; max-height: 200px; overflow-y: auto;
+            border: 1px solid #ced4da; border-top: none; background: #fff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); z-index: 1001; display: none;
+        }
+        .multi-select-item { padding: 8px 15px; cursor: pointer; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .multi-select-item:hover { background-color: #f8f9fa; }
+        .multi-select-item.selected { background-color: #e2e6ea; font-weight: bold; color: #495057; }
+        .selected-tags-container {
+            height: auto; min-height: 0; padding: 5px; display: flex; flex-wrap: wrap; gap: 5px;
+            align-content: flex-start; background-color: #fff; border: 1px solid #ced4da;
+            border-radius: .375rem; margin-top: 5px; overflow: hidden;
+        }
+        .selected-tags-container.is-empty { padding: 0; margin-top: 0; border-width: 0; height: 0; min-height: 0; }
+        .selected-tag {
+            display: inline-flex; align-items: center; padding: .25em .6em; font-size: .85em;
+            font-weight: 600; line-height: 1; color: #fff; border-radius: .25rem;
+            background-color: var(--msu-red);
+        }
+        .selected-tag-remove { margin-left: .5em; cursor: pointer; font-weight: bold; opacity: 0.8; }
+        .selected-tag-remove:hover { opacity: 1; }
+        .filter-group .col-md-6 input[type="text"] { margin-top: 0 !important; }
     </style>
 </head>
 <body>
@@ -517,33 +605,90 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             <i class="fas fa-list-alt fa-fw me-2 text-secondary"></i> All Transactions History
         </h2>
 
-        <form method="GET" class="mb-4" id="transactionFilterForm">
-            <div class="d-flex flex-wrap align-items-center justify-content-between">
+        <form method="GET" id="transactionFilterForm" class="filter-group">
+            
+            <div class="row g-3 mb-3">
                 
-                <div class="d-flex align-items-center mb-2 mb-md-0 me-md-3">
-                    <label for="statusFilter" class="form-label me-2 mb-0 fw-bold text-secondary text-nowrap">Filter by Status:</label>
-                    <select name="filter" id="statusFilter" class="form-select form-select-sm w-auto">
-                        <option value="all" <?= $filter === 'all' ? 'selected' : '' ?>>All</option>
-                        <option value="waiting_for_approval" <?= $filter === 'waiting_for_approval' ? 'selected' : '' ?>>Waiting for Approval</option>
-                        <option value="borrowed" <?= $filter === 'borrowed' ? 'selected' : '' ?>>Borrowed (Approved)</option>
-                        <option value="reserved" <?= $filter === 'reserved' ? 'selected' : '' ?>>Reserved</option>
-                        <option value="returned" <?= $filter === 'returned' ? 'selected' : '' ?>>Returned (Completed)</option>
-                        <option value="overdue" <?= $filter === 'overdue' ? 'selected' : '' ?>>Overdue</option>
-                        <option value="rejected" <?= $filter === 'rejected' ? 'selected' : '' ?>>Rejected</option>
-                        <option value="damaged" <?= $filter === 'damaged' ? 'selected' : '' ?>>Damaged Unit</option>
+                <div class="col-md-6 col-sm-6 col-12">
+                    <label for="statusFilter" class="form-label">Filter by Status:</label>
+                    <select name="status_filter" id="statusFilter" class="form-select form-select-sm">
+                        <option value="all" <?= $status_filter === 'all' ? 'selected' : '' ?>>All Statuses</option>
+                        <option value="waiting_for_approval" <?= $status_filter === 'waiting_for_approval' ? 'selected' : '' ?>>Waiting for Approval</option>
+                        <option value="borrowed" <?= $status_filter === 'borrowed' ? 'selected' : '' ?>>Currently Borrowed</option>
+                        <option value="reserved" <?= $status_filter === 'reserved' ? 'selected' : '' ?>>Reserved (Approved)</option>
+                        <option value="returned" <?= $status_filter === 'returned' ? 'selected' : '' ?>>Returned (Completed)</option>
+                        <option value="overdue" <?= $status_filter === 'overdue' ? 'selected' : '' ?>>Overdue</option>
+                        <option value="rejected" <?= $status_filter === 'rejected' ? 'selected' : '' ?>>Rejected</option>
+                        <option value="damaged" <?= $status_filter === 'damaged' ? 'selected' : '' ?>>Damaged Unit</option>
                     </select>
                 </div>
+                
+                <div class="col-md-6 col-sm-6 col-12">
+                    <label for="apparatus_search_input" class="form-label">Filter by Apparatus Name (Multi-select):</label>
+                    
+                    <div class="multi-select-container">
+                        <input type="text" id="apparatus_search_input" class="form-control form-control-sm" placeholder="Search and select apparatus..." autocomplete="off">
+                        
+                        <div id="selected_apparatus_tags" class="selected-tags-container <?= empty($apparatus_ids_str) ? 'is-empty' : '' ?>">
+                            <?php 
+                            // Re-render selected items as tags
+                            foreach ($allApparatus as $app) {
+                                if (in_array((string)$app['id'], $apparatus_ids_str)) {
+                                    echo '<span class="selected-tag" data-id="' . htmlspecialchars($app['id']) . '">' . htmlspecialchars($app['name']) . '<span class="selected-tag-remove">&times;</span></span>';
+                                    // Hidden input fields will be dynamically added by JavaScript on selection/load
+                                }
+                            }
+                            ?>
+                        </div>
 
-                <div class="d-flex align-items-center">
-                    <input type="text" name="search" class="form-control form-control-sm me-2" placeholder="Search student/apparatus..." value="<?= htmlspecialchars($search) ?>">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-search"></i>
-                    </button>
+                        <div id="apparatus_dropdown" class="multi-select-dropdown">
+                            <?php foreach ($allApparatus as $app): ?>
+                                <div 
+                                    class="multi-select-item"
+                                    data-id="<?= htmlspecialchars($app['id']) ?>"
+                                    data-name="<?= htmlspecialchars($app['name']) ?>"
+                                    data-selected="<?= in_array((string)$app['id'], $apparatus_ids_str) ? 'true' : 'false' ?>"
+                                >
+                                    <?= htmlspecialchars($app['name']) ?>
+                                </div>
+                            <?php endforeach; ?>
+                            <div id="no_apparatus_match" class="multi-select-item text-muted" style="display:none;">No matches found.</div>
+                        </div>
+                    </div>
+                    </div>
+                
+                </div>
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3 col-sm-6 col-12">
+                    <label for="startDateFilter" class="form-label">Start Date (Borrow Date):</label>
+                    <input type="date" name="start_date" id="startDateFilter" class="form-control form-control-sm" value="<?= htmlspecialchars($start_date) ?>">
+                </div>
+                
+                <div class="col-md-3 col-sm-6 col-12">
+                    <label for="endDateFilter" class="form-label">End Date (Borrow Date):</label>
+                    <input type="date" name="end_date" id="endDateFilter" class="form-control form-control-sm" value="<?= htmlspecialchars($end_date) ?>">
+                </div>
+
+                <div class="col-md-3 col-sm-6 col-12">
+                    <label for="search" class="form-label">Search Student/Apparatus:</label>
+                    <input type="text" name="search" id="search" class="form-control form-control-sm" placeholder="Search name or ID..." value="<?= htmlspecialchars($search_term) ?>">
+                </div>
+                
+                <div class="col-md-3 col-sm-6 col-12">
+                    <div class="filter-actions">
+                        <button type="submit" class="btn btn-primary btn-sm flex-fill">
+                            <i class="fas fa-filter me-1"></i> Apply Filters
+                        </button>
+                        <a href="staff_transaction.php" class="btn btn-secondary btn-sm flex-fill">
+                            <i class="fas fa-undo me-1"></i> Clear Filters
+                        </a>
+                    </div>
                 </div>
 
             </div>
-        </form>
 
+        </form>
         <div class="table-responsive">
             <table class="table table-striped table-hover align-middle">
                 <thead>
@@ -560,30 +705,49 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
                 <tbody>
                     <?php 
                         $previous_form_id = null;
+                        
+                        // Create a temporary array to store forms that still have matching items
+                        $transactions_to_display = [];
+
                         if (!empty($transactions)): 
                             
-                            $transactions_with_items = []; 
-
-                            // First pass: Prepare data for display
                             foreach ($transactions as $trans) {
                                 $form_id = $trans['id'];
-                                // IMPORTANT: Assuming getFormItems returns an array of individual item units, 
-                                // including item_status and is_late_return flags.
+                                
+                                // Fetch all items for this form
                                 $detailed_items = $transaction->getFormItems($form_id); 
                                 
-                                // If the form has no items (e.g., rejected early), ensure we loop once
+                                // --- CRITICAL DISPLAY FILTERING LOGIC (MULTI-SELECT SUPPORT) ---
+                                // 1. Filter the items list based on the selected apparatus IDs (if applicable)
+                                if (!empty($apparatus_ids_str)) {
+                                    $filtered_items = array_filter($detailed_items, function($item) use ($apparatus_ids_str) {
+                                        // Filter only items whose apparatus_id is in the selected IDs array
+                                        return isset($item['apparatus_id']) && in_array((string)$item['apparatus_id'], $apparatus_ids_str);
+                                    });
+                                    // Reset array keys after filtering
+                                    $detailed_items = array_values($filtered_items);
+                                }
+                                
+                                // 2. If the detailed items array is now empty (meaning no items match the apparatus filter in this form), skip to the next form.
                                 if (empty($detailed_items)) {
+                                    continue;
+                                }
+
+                                // If the form had no items initially (e.g., rejected early), ensure we loop once
+                                if (empty($detailed_items) && strtolower($trans['status']) === 'rejected') {
+                                    // Keep the rejected row if it hasn't been filtered out by the apparatus filter
                                     $detailed_items = [null]; 
                                 }
                                 
-                                $transactions_with_items[$form_id] = [
+                                // Add the filtered form/item group to the display list
+                                $transactions_to_display[$form_id] = [
                                     'form' => $trans,
                                     'items' => $detailed_items
                                 ];
                             }
-
-                            // Second pass: Output rows, one per item
-                            foreach ($transactions_with_items as $form_id => $data):
+                            
+                            // Second pass: Output rows, one per item in the filtered list
+                            foreach ($transactions_to_display as $form_id => $data):
                                 $trans = $data['form'];
                                 $detailed_items = $data['items'];
 
@@ -593,7 +757,7 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
                                 // Loop through the items for this single form
                                 foreach ($detailed_items as $index => $unit):
                                     
-                                    // Item status logic: falls back to form status if item status is missing
+                                    // Item details
                                     $name = htmlspecialchars($unit['name'] ?? 'N/A');
                                     $unit_tag = (isset($unit['unit_id'])) ? ' (Unit ' . htmlspecialchars($unit['unit_id']) . ')' : '';
                                     
@@ -603,15 +767,16 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
                                     $item_tag_class = $item_status;
                                     $item_tag_text = ucfirst(str_replace('_', ' ', $item_status));
                                     
-                                    if ($item_status === 'returned' && (isset($unit['is_late_return']) && $unit['is_late_return'] == 1)) {
+                                    // Overdue check
+                                    if (($item_status === 'borrowed' || $item_status === 'approved') && isOverdue($trans['expected_return_date'])) {
+                                        $item_tag_class = 'overdue';
+                                        $item_tag_text = 'Overdue';
+                                    } elseif ($item_status === 'returned' && (isset($unit['is_late_return']) && $unit['is_late_return'] == 1)) {
                                          $item_tag_class = 'returned-late';
                                          $item_tag_text = 'Returned (Late)';
                                     } elseif ($item_status === 'damaged') {
                                          $item_tag_class = 'damaged';
                                          $item_tag_text = 'Damaged';
-                                    } elseif ($item_status === 'overdue') {
-                                         $item_tag_class = 'overdue';
-                                         $item_tag_text = 'Overdue';
                                     }
                                     
                                     // Add a visual class if this is the first item of a new form group
@@ -621,41 +786,41 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
                                          $previous_form_id = $form_id; // Update tracker
                                     }
 
-                                 ?>
-                                 <tr class="<?= $row_classes ?>">
-                                     <td data-label="Form ID:"><?= $trans['id'] ?></td>
-                                     <td data-label="Student Details:">
-                                         <strong><?= htmlspecialchars($trans['firstname'] ?? '') ?> <?= htmlspecialchars($trans['lastname'] ?? '') ?></strong>
-                                         <br>
-                                         <small class="text-muted">(ID: <?= htmlspecialchars($trans['user_id']) ?>)</small>
-                                     </td>
-                                     <td data-label="Type:"><?= ucfirst($trans['form_type']) ?></td>
-                                     
-                                     <td data-label="Status:">
-                                         <span class="status-tag <?= $item_tag_class ?>">
-                                             <?= $item_tag_text ?>
-                                         </span>
-                                     </td>
-                                     
-                                     <td data-label="Borrow Date:"><?= $trans['borrow_date'] ?: '-' ?></td>
-                                     <td data-label="Expected Return:"><?= $trans['expected_return_date'] ?: '-' ?></td>
-                                     <td data-label="Actual Return:"><?= $trans['actual_return_date'] ?: '-' ?></td>
-                                     
-                                     <td data-label="Apparatus (Item):" class="item-cell">
-                                         <div class="p-0">
-                                             <span><?= $name ?> (x<?= $unit['quantity'] ?? 1 ?>)<?= $unit_tag ?></span>
-                                         </div>
-                                     </td>
-                                     
-                                     <td data-label="Staff Remarks:"><?= htmlspecialchars($trans['staff_remarks'] ?? '-') ?></td>
-                                 </tr>
-                                 <?php 
-                                         endforeach; // End item loop
-                                     endforeach; // End form loop 
-                                 ?>
-                    <?php else: ?>
-                        <tr><td colspan="9" class="text-muted py-3">No transactions found matching the selected filter or search term.</td></tr>
-                    <?php endif; ?>
+                                    ?>
+                                    <tr class="<?= $row_classes ?>">
+                                        <td data-label="Form ID:"><?= $trans['id'] ?></td>
+                                        <td data-label="Student Details:">
+                                            <strong><?= htmlspecialchars($trans['firstname'] ?? '') ?> <?= htmlspecialchars($trans['lastname'] ?? '') ?></strong>
+                                            <br>
+                                            <small class="text-muted">(ID: <?= htmlspecialchars($trans['user_id']) ?>)</small>
+                                        </td>
+                                        <td data-label="Type:"><?= ucfirst($trans['form_type']) ?></td>
+                                        
+                                        <td data-label="Status:">
+                                            <span class="status-tag <?= $item_tag_class ?>">
+                                                <?= $item_tag_text ?>
+                                            </span>
+                                        </td>
+                                        
+                                        <td data-label="Borrow Date:"><?= $trans['borrow_date'] ?: '-' ?></td>
+                                        <td data-label="Expected Return:"><?= $trans['expected_return_date'] ?: '-' ?></td>
+                                        <td data-label="Actual Return:"><?= $trans['actual_return_date'] ?: '-' ?></td>
+                                        
+                                        <td data-label="Apparatus (Item):" class="item-cell">
+                                            <div class="p-0">
+                                                <span><?= $name ?> (x<?= $unit['quantity'] ?? 1 ?>)<?= $unit_tag ?></span>
+                                            </div>
+                                        </td>
+                                        
+                                        <td data-label="Staff Remarks:"><?= htmlspecialchars($trans['staff_remarks'] ?? '-') ?></td>
+                                    </tr>
+                                    <?php 
+                                        endforeach; // End item loop
+                            endforeach; // End form loop 
+                                    ?>
+                        <?php else: ?>
+                            <tr><td colspan="9" class="text-muted py-3">No transactions found matching the selected filter or search term.</td></tr>
+                        <?php endif; ?>
                 </tbody>
             </table>
         </div>
@@ -664,8 +829,32 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
-    // Function to handle clicking a notification link
+    // --- UTILITY FUNCTION (JavaScript Implementation) ---
+    function isOverdue(expected_return_date) {
+        if (!expected_return_date || expected_return_date === 'N/A') return false;
+        const expected_date = new Date(expected_return_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); 
+        expected_date.setHours(0, 0, 0, 0);
+        return expected_date < today;
+    }
+
+    // --- Enforce Maximum Date (Today) for Date Filters ---
+    function setMaxDateToToday(elementId) {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0'); 
+        const day = String(today.getDate()).padStart(2, '0');
+        const maxDate = `${year}-${month}-${day}`;
+        
+        const dateInput = document.getElementById(elementId);
+        if (dateInput) {
+            dateInput.setAttribute('max', maxDate);
+        }
+    }
+
+
+    // --- JAVASCRIPT FOR STAFF NOTIFICATION LOGIC (Unchanged) ---
     window.handleNotificationClick = function(event, element, notificationId) {
         event.preventDefault(); 
         const linkHref = element.getAttribute('href');
@@ -683,7 +872,6 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
         });
     };
 
-    // Function to mark ALL staff notifications as read
     window.markAllStaffAsRead = function() {
         $.post('../api/mark_notification_as_read.php', { mark_all: true, role: 'staff' }, function(response) {
             if (response.success) {
@@ -697,7 +885,6 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
         });
     };
     
-    // Function to fetch the count and populate the dropdown
     function fetchStaffNotifications() {
         const apiPath = '../api/get_notifications.php'; 
 
@@ -710,17 +897,15 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             const $dropdown = $('#notification-dropdown');
             const $header = $dropdown.find('.dropdown-header');
             
+            // Show/hide badge
+            if (unreadCount > 0) {
+                 $badge.text(unreadCount > 99 ? '99+' : unreadCount).show();
+            } else {
+                 $badge.text('0').hide();
+            }
+
             // Find and temporarily detach the static View All link
             const $viewAllLink = $dropdown.find('a[href="staff_pending.php"]').detach();
-            
-            // Clear previous dynamic content
-            $dropdown.children('.dynamic-notif-item').remove();
-            $dropdown.children('.mark-all-btn-wrapper').remove(); 
-            
-            // Update badge display
-            $badge.text(unreadCount);
-            $badge.toggle(unreadCount > 0); 
-            
             
             // Clear the obsolete placeholder content
             $dropdown.find('.dynamic-content-area').remove();
@@ -733,8 +918,8 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
                 
                 // 1. Mark All button (Must be inserted before notifications)
                 if (unreadCount > 0) {
-                     contentToInsert.push(`
-                            <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
+                        contentToInsert.push(`
+                            <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-link" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
                                 <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
                             </a>
                         `);
@@ -780,17 +965,97 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             // 4. Re-append the 'View All' link to the end of the dropdown
             $dropdown.append($viewAllLink);
             
-
         }).fail(function(jqXHR, textStatus, errorThrown) {
             console.error("Error fetching staff notifications:", textStatus, errorThrown);
             $('#notification-bell-badge').text('0').hide();
         });
     }
     // --- END JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
+    
+    // --- APPARATUS MULTI-SELECT LOGIC ---
+    
+    function updateApparatusSelection() {
+        const tagsContainer = document.getElementById('selected_apparatus_tags');
+        const searchInput = document.getElementById('apparatus_search_input');
+        
+        // Remove existing hidden inputs for form submission
+        document.querySelectorAll('input[name="apparatus_ids[]"]').forEach(input => input.remove());
+        
+        tagsContainer.innerHTML = ''; // Clear visual tags
+        const selectedItems = [];
+
+        document.querySelectorAll('#apparatus_dropdown .multi-select-item').forEach(item => {
+            if (item.getAttribute('data-selected') === 'true') {
+                const id = item.getAttribute('data-id');
+                const name = item.getAttribute('data-name');
+                selectedItems.push(id);
+
+                // Create and append the new tag
+                const tag = document.createElement('span');
+                tag.className = 'selected-tag';
+                tag.setAttribute('data-id', id);
+                tag.innerHTML = `${name}<span class="selected-tag-remove">&times;</span>`;
+                
+                // Attach removal event handler to the newly created tag
+                tag.querySelector('.selected-tag-remove').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const dropdownItem = document.querySelector(`#apparatus_dropdown .multi-select-item[data-id="${id}"]`);
+                    if (dropdownItem) {
+                        dropdownItem.classList.remove('selected');
+                        dropdownItem.setAttribute('data-selected', 'false');
+                    }
+                    updateApparatusSelection();
+                    searchInput.focus();
+                });
+
+                tagsContainer.appendChild(tag);
+            }
+        });
+
+        if (selectedItems.length === 0) {
+            tagsContainer.classList.add('is-empty');
+        } else {
+            tagsContainer.classList.remove('is-empty');
+            // Add hidden inputs for form submission
+            selectedItems.forEach(id => {
+                const newHiddenInput = document.createElement('input');
+                newHiddenInput.type = 'hidden';
+                newHiddenInput.name = 'apparatus_ids[]';
+                newHiddenInput.value = id;
+                // Append the hidden input to the form container (tags container)
+                tagsContainer.appendChild(newHiddenInput); 
+            });
+        }
+    }
+    
+    function filterDropdownItems(searchTerm) {
+        let matchFound = false;
+        const dropdownItems = document.querySelectorAll('#apparatus_dropdown .multi-select-item');
+        const noMatchItem = document.getElementById('no_apparatus_match');
+        
+        dropdownItems.forEach(item => {
+            if (item === noMatchItem) return;
+            
+            const itemName = item.getAttribute('data-name').toLowerCase();
+            const isMatch = itemName.includes(searchTerm.toLowerCase());
+            item.style.display = isMatch ? 'block' : 'none';
+            if (isMatch) {
+                matchFound = true;
+            }
+        });
+        noMatchItem.style.display = matchFound ? 'none' : 'block';
+    }
+    
+    // --- END APPARATUS MULTI-SELECT LOGIC ---
 
 
     // Script to ensure the correct link remains active
     document.addEventListener('DOMContentLoaded', () => {
+        
+        // --- Date Filter Max Date Fix ---
+        setMaxDateToToday('startDateFilter');
+        setMaxDateToToday('endDateFilter');
+        
         // --- Sidebar Activation ---
         const path = window.location.pathname.split('/').pop() || 'staff_dashboard.php';
         const links = document.querySelectorAll('.sidebar .nav-link');
@@ -805,7 +1070,7 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             }
         });
         
-        // --- Mobile Toggle Logic (Simplified for brevity as it's repetitive) ---
+        // --- Mobile Toggle Logic ---
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const mainContent = document.querySelector('.main-content'); 
@@ -841,20 +1106,72 @@ $transactions = $transaction->getAllFormsFiltered($filter, $search);
             });
         }
         
-        // --- Filter Submission Logic ---
-        const statusFilter = document.getElementById('statusFilter');
-        const form = document.getElementById('transactionFilterForm');
-
-        if (statusFilter && form) {
-            statusFilter.addEventListener('change', function() {
-                // This submits the entire form, ensuring both 'filter' and 'search' inputs are sent via GET
-                form.submit();
-            });
-        }
-        
         // --- Notification Initialization ---
         fetchStaffNotifications();
         setInterval(fetchStaffNotifications, 30000); 
+        
+        // --- Apparatus Multi-select Initialization ---
+        const searchInput = document.getElementById('apparatus_search_input');
+        const dropdown = document.getElementById('apparatus_dropdown');
+        const dropdownItems = document.querySelectorAll('#apparatus_dropdown .multi-select-item');
+        
+        // 1. Initial update to populate the hidden input/tags on load (from URL parameters)
+        updateApparatusSelection(); 
+
+        // 2. Dropdown Toggle (Focus/Blur)
+        searchInput.addEventListener('focus', () => {
+            dropdown.style.display = 'block';
+            searchInput.placeholder = 'Type to filter options...';
+            filterDropdownItems(searchInput.value); 
+        });
+        
+        // Delay hide on blur
+        document.addEventListener('click', (e) => {
+            const container = document.querySelector('.multi-select-container');
+            if (container && !container.contains(e.target)) {
+                dropdown.style.display = 'none';
+                searchInput.placeholder = 'Search and select apparatus...';
+            }
+        });
+        
+        // 3. Filtering on Keyup
+        searchInput.addEventListener('keyup', () => {
+            filterDropdownItems(searchInput.value);
+        });
+
+        // 4. Selection Logic on Click
+        dropdownItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+
+                const isSelected = item.getAttribute('data-selected') === 'true';
+                
+                if (isSelected) {
+                    item.classList.remove('selected');
+                    item.setAttribute('data-selected', 'false');
+                } else {
+                    item.classList.add('selected');
+                    item.setAttribute('data-selected', 'true');
+                }
+                
+                updateApparatusSelection();
+                searchInput.focus(); 
+                
+                // Clear the search field to reset the dropdown filter view
+                searchInput.value = '';
+                filterDropdownItems(''); 
+            });
+        });
+        
+        // 5. Handle 'Clear Filters' button click
+        document.querySelector('.filter-actions a[href="staff_transaction.php"]').addEventListener('click', () => {
+            // Unselect all items visually and logically before navigating
+            document.querySelectorAll('#apparatus_dropdown .multi-select-item').forEach(item => {
+                item.classList.remove('selected');
+                item.setAttribute('data-selected', 'false');
+            });
+            // Let the natural form submission handle the URL reset
+        });
     });
 </script>
 </body>

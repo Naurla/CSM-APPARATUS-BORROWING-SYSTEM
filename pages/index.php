@@ -49,16 +49,17 @@ session_start();
             justify-content: space-between;
             align-items: center;
             padding: 15px 50px;
-            background-color: rgba(255, 255, 255, 0); /* [EFFECT] Starts transparent */
-            box-shadow: none; /* [EFFECT] Starts with no shadow */
-            transition: all 0.3s ease-in-out; /* [EFFECT] Transition for scroll effect */
+            /* FIX 1: Starts semi-transparent white with a shadow for immediate readability */
+            background-color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); 
+            transition: all 0.3s ease-in-out;
             z-index: 1000;
         }
 
-        /* [EFFECT] Navbar state when scrolled */
+        /* [EFFECT] Navbar state when scrolled (kept for consistency, though less dramatic now) */
         .navbar.scrolled {
             background-color: rgba(255, 255, 255, 0.98); 
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
         }
 
         .navbar .logo {
@@ -101,7 +102,8 @@ session_start();
             height: 100vh;
             width: 100%;
             display: flex;
-            align-items: center;
+            /* FIX 2: Align to the bottom of the viewport to keep the top of the image visible */
+            align-items: flex-end; 
             justify-content: center;
             text-align: center;
             position: relative;
@@ -123,6 +125,8 @@ session_start();
             border-radius: 12px;
             max-width: 900px;
             margin: 20px;
+            /* FIX 3: Add margin-bottom to lift the box off the absolute bottom */
+            margin-bottom: 10vh; 
             z-index: 10;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
             
@@ -284,6 +288,9 @@ session_start();
             .navbar {
                 padding: 15px 20px;
             }
+            .hero-content-box {
+                margin-bottom: 5vh; /* Adjusted for smaller screens */
+            }
             .hero-headline {
                 font-size: 2.8rem;
             }
@@ -301,6 +308,7 @@ session_start();
         @media (max-width: 576px) {
             .hero-content-box {
                 padding: 30px;
+                margin-bottom: 2vh; /* Adjusted for smaller screens */
             }
             .hero-headline {
                 font-size: 2rem;
@@ -386,7 +394,7 @@ session_start();
             const navbar = document.querySelector('.navbar');
             const featureItems = document.querySelectorAll('.feature-item');
             
-            // 1. Sticky Header Effect
+            // 1. Sticky Header Effect (Now starts semi-opaque, only adds a stronger shadow on scroll)
             const handleScroll = () => {
                 if (window.scrollY > 50) {
                     navbar.classList.add('scrolled');

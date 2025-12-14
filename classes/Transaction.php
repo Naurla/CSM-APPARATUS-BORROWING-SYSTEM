@@ -1819,50 +1819,126 @@ public function updateApparatusDetailsAndStock($id, $name, $type, $size, $materi
         return "Database Error: " . $e->getMessage();
     }
 }
-    public function getAllFormsFiltered($filter = 'all', $search = '') {
-        $conn = $this->connect();
+/**
+ * Retrieves borrow forms filtered by status, search term, date range, 
+ * specific apparatus, and apparatus type.
+ */
+/**
+ * Retrieves ALL form rows filtered by the complex criteria.
+ * This method finds the unique form IDs matching the criteria. The view then 
+ * loops through these IDs and calls getFormItems() for detailed item display.
+ */
+public function getAllFormsFiltered(
+    $status_filter = 'all', 
+    $search_term = '', 
+    $start_date = '', 
+    $end_date = '', 
+    $apparatus_id = '', 
+    $apparatus_type = ''
+) {
+    $conn = $this->connect();
+    $where_clauses = [];
+    $params = [];
+    $joins = "";
+    
+    // LEFT JOINs are used so that forms without any items (e.g., rejected early) 
+    // or forms without item details (e.g., item details tables haven't been populated yet) are still included.
+    $joins .= "
+        LEFT JOIN borrow_items bi ON bf.id = bi.form_id
+        LEFT JOIN apparatus_type at ON bi.type_id = at.id
+    ";
+
+    $base_sql = "
+        SELECT 
+            DISTINCT bf.*, 
+            u.firstname, 
+            u.lastname
+        FROM borrow_forms bf
+        JOIN users u ON bf.user_id = u.id
+    ";
+    
+    $base_sql .= $joins;
+    
+    // --- 1. STATUS FILTER ---
+    if ($status_filter !== 'all') {
+        if ($status_filter === 'overdue') {
+            // Forms that are currently borrowed/approved but past due date
+            $where_clauses[] = "(bf.status IN ('approved', 'borrowed') AND bf.expected_return_date < CURDATE())";
+        } elseif ($status_filter === 'damaged') {
+             // Filter forms where AT LEAST ONE item is damaged
+             $where_clauses[] = "bi.item_status = 'damaged'";
+        } else {
+             // Direct status match for form status
+             $where_clauses[] = "bf.status = :filter_status";
+             $params[':filter_status'] = $status_filter;
+        }
+    }
+    
+    // --- 2. APPARATUS ID FILTER (Filters by apparatus_type.id using borrow_items) ---
+    if (!empty($apparatus_id)) {
+        $where_clauses[] = "bi.type_id = :apparatus_id";
+        $params[':apparatus_id'] = $apparatus_id;
+    }
+    
+    // --- 3. APPARATUS TYPE FILTER ---
+    if (!empty($apparatus_type)) {
+        $where_clauses[] = "at.apparatus_type = :apparatus_type";
+        $params[':apparatus_type'] = $apparatus_type;
+    }
+
+    // --- 4. DATE RANGE FILTERS (FIXED: Uses COALESCE to handle NULL borrow_date) ---
+    if (!empty($start_date)) {
+        // Use borrow_date if available, otherwise fall back to request_date
+        $where_clauses[] = "COALESCE(bf.borrow_date, bf.request_date) >= :start_date";
+        $params[':start_date'] = $start_date;
+    }
+    
+    if (!empty($end_date)) {
+        // Use borrow_date if available, otherwise fall back to request_date
+        $where_clauses[] = "COALESCE(bf.borrow_date, bf.request_date) <= :end_date";
+        $params[':end_date'] = $end_date;
+    }
+    
+    // --- 5. SEARCH TERM FILTER (Student Name/ID or Apparatus Name) ---
+    if (!empty($search_term)) {
+        $search_param = '%' . $search_term . '%';
         
-        $base_sql = "
-            SELECT 
-                bf.*, 
-                u.firstname, 
-                u.lastname
-            FROM borrow_forms bf
-            JOIN users u ON bf.user_id = u.id
+        $search_clause = "
+            (u.firstname LIKE :search_term_name 
+             OR u.lastname LIKE :search_term_name 
+             OR bf.user_id = :search_id
+             OR at.name LIKE :search_term_name
+            )
         ";
         
-        $where_clauses = [];
-        $params = [];
-        
-        if ($filter !== 'all') {
-            if ($filter === 'overdue') {
-                $where_clauses[] = "(bf.status IN ('approved', 'borrowed') AND bf.expected_return_date < CURDATE())";
-            } else {
-                $where_clauses[] = "bf.status = :filter_status";
-                $params[':filter_status'] = $filter;
-            }
-        }
-        
-        if (!empty($search)) {
-            $where_clauses[] = "
-                (u.firstname LIKE :search_term 
-                 OR u.lastname LIKE :search_term 
-                 OR bf.id = :search_id)
-            ";
-            $params[':search_term'] = '%' . $search . '%';
-            $params[':search_id'] = is_numeric($search) ? (int)$search : 0;
-        }
-        
-        if (!empty($where_clauses)) {
-            $base_sql .= " WHERE " . implode(' AND ', $where_clauses);
-        }
+        $where_clauses[] = $search_clause;
+        $params[':search_term_name'] = $search_param;
+        // Use the search term as an ID if it's numeric for a more precise match
+        $params[':search_id'] = is_numeric($search_term) ? (int)$search_term : 0; 
+    }
+    
+    // Combine WHERE clauses
+    if (!empty($where_clauses)) {
+        $base_sql .= " WHERE " . implode(' AND ', $where_clauses);
+    }
+    
+    // Group by Form ID to ensure only unique forms are returned, even if multiple items match
+    $base_sql .= " GROUP BY bf.id, u.firstname, u.lastname";
+    
+    // Order by descending ID
+    $base_sql .= " ORDER BY bf.id DESC";
 
-        $base_sql .= " ORDER BY bf.id DESC";
-
+    try {
         $query = $conn->prepare($base_sql);
         $query->execute($params);
-        return $query->fetchAll(PDO::FETCH_ASSOC);
+        $forms = $query->fetchAll(PDO::FETCH_ASSOC);
+        
+        return $forms;
+    } catch (\PDOException $e) {
+        error_log("Database Error in getAllFormsFiltered: " . $e->getMessage());
+        return [];
     }
+}
 
 
     public function getAllForms() {

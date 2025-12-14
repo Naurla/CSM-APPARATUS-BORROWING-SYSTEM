@@ -1,6 +1,10 @@
 <?php
+// File: ../classes/Student.php
 require_once "Database.php";
 require_once "Transaction.php"; // Assuming this is needed for methods not shown
+
+// IMPORTANT: This class relies on 'Database.php' having a 'connect()' method
+// which returns a valid PDO object on every call.
 
 class Student extends Database {
 
@@ -56,30 +60,36 @@ class Student extends Database {
         return $query->execute();
     }
     
-    // NEW: Method to verify account using a 6-digit code
+    /**
+     * NEW: Method to verify account using a 6-digit code (Corrected implementation)
+     * NOTE: This replaces the previously partial verifyAccount() implementation.
+     */
     public function verifyStudentAccountByCode($email, $code) {
         $conn = $this->connect();
         $code = trim($code);
         
-        // 1. Find the user with the email, the token, and unverified status
-        $sql = "SELECT id FROM users WHERE email = :email AND verification_token = :code AND is_verified = 0";
-        $stmt = $conn->prepare($sql);
-        $stmt->bindParam(":email", $email);
-        $stmt->bindParam(":code", $code);
-        $stmt->execute();
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($user) {
-            $user_id = $user['id'];
-            
-            // 2. Verify the account: set is_verified = 1 and clear the token
-            $update_sql = "UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = :id";
-            $update_stmt = $conn->prepare($update_sql);
-            $update_stmt->bindParam(":id", $user_id);
+        // 1. Find and update the user in one query: 
+        // We look for the email, the matching token, and ensure they are NOT already verified (is_verified = 0)
+        $sql = "UPDATE users 
+                SET is_verified = 1, verification_token = NULL 
+                WHERE email = :email 
+                AND verification_token = :code 
+                AND is_verified = 0 
+                LIMIT 1";
 
-            return $update_stmt->execute();
-        } 
-        return false;
+        try {
+            $stmt = $conn->prepare($sql);
+            $stmt->bindParam(':email', $email);
+            $stmt->bindParam(':code', $code);
+            $stmt->execute();
+
+            // Check if exactly one row was updated (verification successful)
+            return $stmt->rowCount() === 1;
+
+        } catch (PDOException $e) {
+            error_log("Database error during account verification: " . $e->getMessage());
+            return false;
+        }
     }
 
 
@@ -111,6 +121,7 @@ class Student extends Database {
         
         return $stmt->execute();
     }
+    
     public function getUserById(int $userId): ?array {
     try {
         $conn = $this->connect(); // Assuming 'connect()' method provides the PDO connection
@@ -127,4 +138,6 @@ class Student extends Database {
         return null;
     }
 }
+// Note: The redundant verifyAccount function has been removed from the bottom 
+// and replaced by the correct verifyStudentAccountByCode above.
 }

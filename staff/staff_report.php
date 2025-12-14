@@ -16,6 +16,7 @@ function isOverdue($expected_return_date) {
     if (!$expected_return_date) return false;
     $expected_date = new DateTime($expected_return_date);
     $today = new DateTime();
+    // Compare dates only (ignore time)
     return $expected_date->format('Y-m-d') < $today->format('Y-m-d');
 }
 
@@ -42,22 +43,45 @@ function getStatusBadgeForItem(string $status, bool $is_late_return = false) {
     return '<span class="badge bg-' . $color . '">' . $display_status . '</span>';
 }
 
-function getDetailedItemRows(array $forms, $transaction) {
+/**
+ * MODIFIED: Accepts $apparatus_filter_ids_str to perform item-level filtering.
+ * Only includes item rows that match the filter (if a filter is set).
+ */
+function getDetailedItemRows(array $forms, $transaction, array $apparatus_filter_ids_str) {
     $rows = [];
     foreach ($forms as $form) {
         $form_id = $form['id'];
         $detailed_items = $transaction->getFormItems($form_id);
 
         if (empty($detailed_items)) {
+            // Handle forms with no associated items gracefully
             $detailed_items = [
-                ['name' => '-',
-                'quantity' => 1,
-                'item_status' => $form['status'], 
-                'is_late_return' => $form['is_late_return'] ?? 0]
+                [
+                    'name' => 'N/A',
+                    'quantity' => 1,
+                    'item_status' => $form['status'], 
+                    'is_late_return' => $form['is_late_return'] ?? 0
+                ]
             ];
         }
 
         foreach ($detailed_items as $index => $item) {
+            
+            // --- NEW ITEM-LEVEL FILTERING LOGIC ---
+            $item_apparatus_id = (string)($item['apparatus_id'] ?? null);
+            $should_include_item = true;
+
+            // Apply item-level filter ONLY if a specific apparatus filter is active
+            if (!empty($apparatus_filter_ids_str)) {
+                if (!in_array($item_apparatus_id, $apparatus_filter_ids_str)) {
+                    $should_include_item = false; // Item does NOT match the required apparatus filter
+                }
+            }
+            
+            if (!$should_include_item) {
+                continue; // Skip this item row
+            }
+            // --- END NEW ITEM-LEVEL FILTERING LOGIC ---
             
             $item_status = strtolower($item['item_status'] ?? $form['status']);
             $is_late_return = $item['is_late_return'] ?? ($form['is_late_return'] ?? 0);
@@ -68,7 +92,13 @@ function getDetailedItemRows(array $forms, $transaction) {
                 'borrower_name' => htmlspecialchars($form['firstname'] . ' ' . $form['lastname']),
                 'form_type' => htmlspecialchars(ucfirst($form['form_type'])),
                 
-                'status_badge' => getStatusBadgeForItem($item_status, (bool)$is_late_return),
+                // Check for overdue status if currently borrowed/approved
+                'status_badge' => (
+                    ($item_status === 'borrowed' || $item_status === 'approved') && 
+                    isOverdue($form['expected_return_date'])
+                ) 
+                    ? getStatusBadgeForItem('overdue') 
+                    : getStatusBadgeForItem($item_status, (bool)$is_late_return),
                 
                 'borrow_date' => htmlspecialchars($form['borrow_date'] ?? 'N/A'),
                 'expected_return' => htmlspecialchars($form['expected_return_date'] ?? 'N/A'),
@@ -88,7 +118,12 @@ function getDetailedItemRows(array $forms, $transaction) {
 $allApparatus = $transaction->getAllApparatus();
 $allForms = $transaction->getAllForms();
 
-$apparatus_filter_id = $_GET['apparatus_id'] ?? '';
+// --- FILTER VARIABLE HANDLING (MULTI-SELECT) ---
+$apparatus_filter_ids = $_GET['apparatus_ids'] ?? [];
+// Ensure it is a clean array of strings for proper checking
+$apparatus_filter_ids = array_filter(is_array($apparatus_filter_ids) ? $apparatus_filter_ids : []); 
+$apparatus_filter_ids_str = array_map('strval', $apparatus_filter_ids); // Map IDs to string for consistent comparison
+
 $start_date = $_GET['start_date'] ?? '';
 $end_date = $_GET['end_date'] ?? '';
 $status_filter = $_GET['status_filter'] ?? '';
@@ -98,6 +133,9 @@ $type_filter = $_GET['type_filter'] ?? '';
 $filteredForms = $allForms;
 $filteredApparatus = $allApparatus;
 
+// --- APPLY FILTERS ---
+
+// Filter Apparatus by Type (Applies to Apparatus List View)
 if ($type_filter) {
     $type_filter_lower = strtolower($type_filter);
     $filteredApparatus = array_filter($filteredApparatus, fn($a) =>
@@ -105,49 +143,72 @@ if ($type_filter) {
     );
 }
 
+// Filter Forms by Date Range
 if ($start_date) {
-    $start_dt = new DateTime($start_date);
-    $filteredForms = array_filter($filteredForms, fn($f) => (new DateTime($f['created_at']))->format('Y-m-d') >= $start_dt->format('Y-m-d'));
+    try {
+        $start_dt = new DateTime($start_date);
+        $filteredForms = array_filter($filteredForms, fn($f) => (new DateTime($f['created_at']))->format('Y-m-d') >= $start_dt->format('Y-m-d'));
+    } catch (\Exception $e) {}
 }
 if ($end_date) {
-    $end_dt = new DateTime($end_date);
-    $filteredForms = array_filter($filteredForms, fn($f) => (new DateTime($f['created_at']))->format('Y-m-d') <= $end_dt->format('Y-m-d'));
+    try {
+        $end_dt = new DateTime($end_date);
+        $filteredForms = array_filter($filteredForms, fn($f) => (new DateTime($f['created_at']))->format('Y-m-d') <= $end_dt->format('Y-m-d'));
+    } catch (\Exception $e) {}
 }
-if ($apparatus_filter_id) {
-    $apparatus_filter_id = (string)$apparatus_filter_id;
-    $forms_with_apparatus = [];
-    foreach ($filteredForms as $form) {
-        $items = $transaction->getFormItems($form['id']);
-        foreach ($items as $item) {
-            if ((string)$item['apparatus_id'] === $apparatus_filter_id) {
-                $forms_with_apparatus[] = $form;
-                break;
-            }
-        }
-    }
-    $filteredForms = $forms_with_apparatus;
-}
+
+// REMOVED APPARATUS FILTERING AT THE FORM LEVEL:
+// This filtering is now handled at the item level inside getDetailedItemRows to ensure only the
+// specific requested item rows are returned, not entire forms containing the requested item.
+// if (!empty($apparatus_filter_ids)) {
+//     $forms_with_apparatus = [];
+//     $apparatus_filter_ids_str = array_map('strval', $apparatus_filter_ids);
+//     
+//     foreach ($filteredForms as $form) {
+//         $items = $transaction->getFormItems($form['id']);
+//         foreach ($items as $item) {
+//             if (in_array((string)$item['apparatus_id'], $apparatus_filter_ids_str)) {
+//                 $forms_with_apparatus[] = $form;
+//                 break;
+//             }
+//         }
+//     }
+//     $filteredForms = $forms_with_apparatus;
+// }
+
+// Filter Forms by Form Type
 if ($form_type_filter) {
     $form_type_filter = strtolower($form_type_filter);
     $filteredForms = array_filter($filteredForms, fn($f) => strtolower(trim($f['form_type'])) === $form_type_filter);
 }
+
+// Filter Forms by Status
 if ($status_filter) {
     $status_filter = strtolower($status_filter);
+    
     if ($status_filter === 'overdue') {
-        $filteredForms = array_filter($filteredForms, fn($f) => ($f['status'] === 'borrowed' || $f['status'] === 'approved') && isOverdue($f['expected_return_date']));
+        $filteredForms = array_filter($filteredForms, fn($f) => 
+            ($f['status'] === 'borrowed' || $f['status'] === 'approved') && isOverdue($f['expected_return_date'])
+        );
     } elseif ($status_filter === 'late_returns') {
         $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] === 'returned' && ($f['is_late_return'] ?? 0) == 1);
     } elseif ($status_filter === 'returned') {
         $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] === 'returned' && ($f['is_late_return'] ?? 0) == 0);
     } elseif ($status_filter === 'borrowed_reserved') {
+        // Active forms (not pending/rejected)
         $filteredForms = array_filter($filteredForms, fn($f) => $f['status'] !== 'waiting_for_approval' && $f['status'] !== 'rejected');
     } elseif ($status_filter !== 'all') {
+        // Direct status match
         $filteredForms = array_filter($filteredForms, fn($f) => strtolower(str_replace('_', ' ', $f['status'])) === strtolower(str_replace('_', ' ', $status_filter)));
     }
 }
 
-$detailedItemRows = getDetailedItemRows($filteredForms, $transaction);
 
+// --- PREPARE DATA FOR VIEW ---
+// MODIFIED: Pass the string apparatus filter array to ensure item-level filtering in the function
+$detailedItemRows = getDetailedItemRows($filteredForms, $transaction, $apparatus_filter_ids_str);
+
+// Calculate Dashboard stats (these use $allForms, NOT $filteredForms)
 $totalForms = count($allForms);
 $pendingForms = count(array_filter($allForms, fn($f) => $f['status'] === 'waiting_for_approval'));
 $reservedForms = count(array_filter($allForms, fn($f) => $f['status'] === 'approved'));
@@ -237,6 +298,180 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
         .detailed-inventory-table tbody td .badge{background-color:transparent!important;color:var(--main-text)!important;font-weight:500!important;padding:0!important;border-radius:0!important;border:none!important}
         .print-header{display:none}
         .wmsu-logo-print{display:none}
+        
+        /* Custom Styles for Filter UI Improvement */
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px 15px; /* Vertical and horizontal gap between items */
+        }
+        .filter-column {
+            flex-grow: 1;
+            min-width: 200px; /* Base minimum width for items */
+        }
+        .filter-date-group {
+            display: flex;
+            gap: 10px; /* Space between start and end date */
+        }
+        .filter-date-group > div {
+            flex: 1;
+            min-width: 0;
+        }
+        .filter-date-group .form-label {
+            margin-bottom: 5px;
+        }
+
+        /* NEW CUSTOM STYLES FOR APPARATUS MULTI-SELECT */
+        .multi-select-container {
+            position: relative;
+            z-index: 10;
+        }
+        .multi-select-dropdown {
+            position: absolute;
+            width: 100%;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid #ced4da;
+            border-top: none;
+            background: #fff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1001; /* Ensure it's above other elements */
+            display: none; /* Initially hidden */
+        }
+        .multi-select-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .multi-select-item:hover {
+            background-color: #f8f9fa;
+        }
+        .multi-select-item.selected {
+            background-color: #e2e6ea;
+            font-weight: bold;
+            color: #495057;
+        }
+
+        /* Style for selected tags */
+        .selected-tags-container {
+            height: auto; /* Dynamic height based on content */
+            min-height: 0; /* Important for hiding when empty */
+            padding: 5px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            align-content: flex-start;
+            background-color: #fff;
+            transition: all 0.3s ease-in-out; 
+            border: 1px solid #ced4da;
+            border-radius: .375rem;
+            margin-top: 5px; 
+            overflow: hidden;
+        }
+        
+        /* New class to hide the container when empty */
+        .selected-tags-container.is-empty {
+            padding: 0;
+            margin-top: 0;
+            border-width: 0;
+            height: 0;
+            min-height: 0;
+        }
+
+        .filter-column input[type="text"] {
+            margin-top: 0 !important;
+        }
+
+        .selected-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: .25em .6em;
+            font-size: .85em;
+            font-weight: 600;
+            line-height: 1;
+            color: #fff;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: .25rem;
+            background-color: var(--msu-red);
+        }
+        .selected-tag-remove {
+            margin-left: .5em;
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.8;
+        }
+        .selected-tag-remove:hover {
+            opacity: 1;
+        }
+        /* END NEW CUSTOM STYLES */
+
+        /* Adjustments for the new filter layout */
+        @media (min-width: 993px) {
+            /* Desktop Layout: 4 columns */
+            .filter-column {
+                width: calc(25% - 12px); /* 25% minus gap calculation */
+                flex-basis: calc(25% - 12px);
+            }
+            .filter-column.col-span-2 {
+                 width: calc(50% - 12px); 
+                flex-basis: calc(50% - 12px);
+            }
+            .filter-column.col-span-1 {
+                 width: calc(25% - 12px); 
+                flex-basis: calc(25% - 12px);
+            }
+        }
+
+        @media (min-width: 768px) and (max-width: 992px) {
+            /* Tablet Layout: 2 columns */
+            .filter-column {
+                width: calc(50% - 8px); /* 50% minus gap calculation */
+                flex-basis: calc(50% - 8px);
+            }
+             .filter-column.col-span-2,
+             .filter-column.col-span-1 {
+                width: calc(50% - 8px); 
+                flex-basis: calc(50% - 8px);
+            }
+        }
+        
+        @media (max-width: 767px) {
+             /* Mobile Layout: 1 column stack */
+            .filter-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .filter-column,
+            .filter-column.col-span-2,
+            .filter-column.col-span-1 {
+                width: 100%;
+                flex-basis: 100%;
+                margin-top: 0 !important; /* Reset margin from bootstrap g-3 */
+            }
+            .filter-date-group {
+                flex-direction: column;
+                gap: 5px;
+            }
+            .filter-date-group > div {
+                 margin-bottom: 5px;
+            }
+            .filter-buttons {
+                margin-top: 15px; /* Add space above buttons on mobile */
+                flex-direction: column;
+            }
+            .filter-buttons .btn {
+                 width: 100%;
+                 margin-bottom: 5px;
+            }
+        }
+        /* End Custom Styles */
+
+
         @media print{
             body{margin:0!important;padding:0!important;background:white!important;color:#000}
             .sidebar,.page-header,.filter-form,.print-summary-footer,.top-header-bar{display:none!important}
@@ -300,10 +535,7 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             /* End of Fix */
         }
         @media (min-width:993px){.menu-toggle{display:none}}
-        @media (max-width:1200px){#report-filter-form .col-md-3{width:50%!important}#report-filter-form .col-md-6{width:100%!important}.stat-card{padding:10px 15px}.stat-icon{width:40px;height:40px;font-size:1.2rem}.stat-value{font-size:1.4rem}.table{min-width:1000px}.table thead th{font-size:.9rem}}
-        @media (max-width:992px){.menu-toggle{display:flex;left:20px}.sidebar{left:calc(var(--sidebar-width) * -1);transition:left .3s ease;box-shadow:none;--sidebar-width:250px}.sidebar.active{left:0;box-shadow:2px 0 5px rgba(0,0,0,0.2)}.main-content{margin-left:0;padding-left:15px;padding-right:15px;padding-top:calc(var(--header-height) + 15px)}.top-header-bar{left:0;padding-left:70px;padding-right:15px}.content-area{padding:20px 15px}.page-header{font-size:1.8rem}#report-filter-form .col-md-3,#report-filter-form .col-md-6{width:100%!important;margin-top:10px}#report-filter-form>div:first-child{margin-top:0!important}.d-flex.justify-content-end.align-items-end{flex-direction:column;align-items:stretch!important}.d-flex.justify-content-end.align-items-end .btn{width:100%;margin-left:0!important;margin-right:0!important;margin-bottom:5px}.report-section .row>div{width:50%!important}.report-section .row>div:nth-child(odd){padding-right:.375rem!important}.report-section .row>div:nth-child(even){padding-left:.375rem!important}.report-section .row{margin-left:-.375rem!important;margin-right:-.375rem!important}}
-        @media (max-width:768px){.main-content{padding:10px;padding-top:calc(var(--header-height) + 10px)}.content-area{padding:10px}.report-section .row>div{width:100%!important;margin-bottom:15px;padding:0 .75rem!important}.report-section h3{font-size:1.3rem}.table-responsive{overflow-x:hidden}.table{min-width:auto}.table thead{display:none}.table tbody,.table tr,.table td{display:block;width:100%}.table tr{margin-bottom:15px;border:1px solid #ccc;border-left:1px solid #ccc;border-radius:8px;background-color:var(--card-background);box-shadow:0 2px 4px rgba(0,0,0,0.05);padding:0;overflow:hidden}.table tbody tr.first-item-of-group td{border-top:none}.table tbody tr.first-item-of-group{margin-top:15px}.table tbody tr:first-child.first-item-of-group{margin-top:0}.table td{text-align:right!important;padding-left:50%!important;position:relative;border:none;border-bottom:1px solid #eee;padding:10px 10px!important}.table td:last-child{border-bottom:none}.table:not(.detailed-inventory-table) td::before{content:attr(data-label);position:absolute;left:0;width:50%;height:100%;padding:10px;white-space:nowrap;text-align:left;font-weight:600;color:var(--main-text);font-size:.9rem;background-color:transparent;border-right:none;display:flex;align-items:center}.table tbody tr td:nth-child(1){text-align:left!important;padding:10px!important;font-weight:700;color:#6c757d;background-color:#f8f8f8;border-bottom:1px solid #ddd}.table tbody tr td:nth-child(1)::before{content:"Form ";position:static;display:inline;color:#6c757d;font-size:.9rem;padding:0;width:auto;height:auto}.table tbody tr td:nth-child(3){font-size:1rem;font-weight:700;color:var(--main-text)}.table tbody tr td:nth-child(3)::before{content:"Borrower Name";background-color:#f8f8f8;color:#000;font-weight:700}.table tbody tr td .badge{border-radius:0!important;background-color:transparent!important;color:#333!important;font-weight:600!important;padding:0!important;border:none!important}.table tbody tr td:nth-child(9){text-align:left!important;padding-left:10px!important;border-bottom:none}.table tbody tr td:nth-child(9)::before{content:"Items Borrowed";position:static;width:100%;height:auto;background:#f8f8f8;border-right:none;border-bottom:1px solid #eee;display:block;padding:10px;margin-bottom:5px}.detailed-items-cell span{display:block!important;padding:5px 0}.detailed-inventory-table{min-width:auto}.detailed-inventory-table thead{display:none}.detailed-inventory-table tbody,.detailed-inventory-table tr,.detailed-inventory-table td{display:block;width:100%;padding:0}.detailed-inventory-table tr{margin-bottom:15px;border:1px solid #ccc;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);overflow:hidden}.detailed-inventory-table tbody tr td:nth-child(1){text-align:left!important;font-size:1.1rem;color:var(--msu-red);background-color:#f8f8f8}.detailed-inventory-table tbody tr td:nth-child(1)::before{content:"Apparatus Name:";position:static;display:block;width:100%;color:#6c757d;font-size:.9rem}.detailed-inventory-table tbody tr td:nth-child(2)::before{content:"Type"}.detailed-inventory-table tbody tr td:nth-child(3)::before{content:"Total Stock"}.detailed-inventory-table tbody tr td:nth-child(4)::before{content:"Available Stock"}.detailed-inventory-table tbody tr td:nth-child(5)::before{content:"Damaged Stock"}.detailed-inventory-table tbody tr td:nth-child(6)::before{content:"Lost Stock"}}
-        @media (max-width:576px){.top-header-bar{padding-left:65px}}
+        @media (max-width:1200px){#report-filter-form .filter-column{min-width:unset;}.filter-column.col-span-1, .filter-column.col-span-2 {flex-basis: 50%; width: 50%;}}
     </style>
 </head>
 <body data-print-view="<?= htmlspecialchars($report_view_type) ?>">
@@ -371,91 +603,121 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
 
         <div class="report-section filter-form mb-4">
             <h3><i class="fas fa-filter me-2"></i> Filter Report Data</h3>
-            <form method="GET" action="staff_report.php" class="row g-3" id="report-filter-form">
+            <form method="GET" action="staff_report.php" id="report-filter-form">
                 
-                <div class="col-md-3">
-                    <label for="report_view_type_select" class="form-label fw-bold">**Select Report View Type**</label>
-                    <select name="report_view_type" id="report_view_type_select" class="form-select">
-                        <option value="all" <?= ($report_view_type === 'all') ? 'selected' : '' ?>>View/Print: All Sections (Hub View)</option>
-                        <option value="summary" <?= ($report_view_type === 'summary') ? 'selected' : '' ?>>View/Print: Transaction Summary Only</option>
-                        <option value="inventory" <?= ($report_view_type === 'inventory') ? 'selected' : '' ?>>View/Print: Apparatus Stock Status</option>
-                        <option value="apparatus_list" <?= ($report_view_type === 'apparatus_list') ? 'selected' : '' ?>>View/Print: Detailed Apparatus List</option>
-                        <option value="detailed" <?= ($report_view_type === 'detailed') ? 'selected' : '' ?>>View/Print: Detailed History</option>
-                    </select>
+                <div class="filter-row mb-3">
+                    <div class="filter-column col-span-1">
+                        <label for="report_view_type_select" class="form-label fw-bold">**Select Report View Type**</label>
+                        <select name="report_view_type" id="report_view_type_select" class="form-select">
+                            <option value="all" <?= ($report_view_type === 'all') ? 'selected' : '' ?>>View/Print: All Sections (Hub View)</option>
+                            <option value="summary" <?= ($report_view_type === 'summary') ? 'selected' : '' ?>>View/Print: Transaction Summary Only</option>
+                            <option value="inventory" <?= ($report_view_type === 'inventory') ? 'selected' : '' ?>>View/Print: Apparatus Stock Status</option>
+                            <option value="apparatus_list" <?= ($report_view_type === 'apparatus_list') ? 'selected' : '' ?>>View/Print: Detailed Apparatus List</option>
+                            <option value="detailed" <?= ($report_view_type === 'detailed') ? 'selected' : '' ?>>View/Print: Detailed History</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-column col-span-1">
+                        <label for="apparatus_search_input" class="form-label">Specific Apparatus (History Filter)</label>
+                        
+                        <input type="hidden" id="apparatus_ids_hidden_input">
+
+                        <div class="multi-select-container">
+                            <input type="text" id="apparatus_search_input" class="form-control" placeholder="Search and select apparatus..." autocomplete="off">
+                            
+                            <div id="selected_apparatus_tags" class="selected-tags-container <?= empty($apparatus_filter_ids) ? 'is-empty' : '' ?>">
+                                <?php 
+                                // This loop re-renders the selected items as tags if filters were applied
+                                foreach ($allApparatus as $app) {
+                                    if (in_array((string)$app['id'], $apparatus_filter_ids)) {
+                                        echo '<span class="selected-tag" data-id="' . htmlspecialchars($app['id']) . '">' . htmlspecialchars($app['name']) . '<span class="selected-tag-remove">&times;</span></span>';
+                                    }
+                                }
+                                ?>
+                            </div>
+
+                            <div id="apparatus_dropdown" class="multi-select-dropdown">
+                                <?php foreach ($allApparatus as $app): ?>
+                                    <div 
+                                        class="multi-select-item"
+                                        data-id="<?= htmlspecialchars($app['id']) ?>"
+                                        data-name="<?= htmlspecialchars($app['name']) ?>"
+                                        data-selected="<?= in_array((string)$app['id'], $apparatus_filter_ids) ? 'true' : 'false' ?>"
+                                    >
+                                        <?= htmlspecialchars($app['name']) ?>
+                                    </div>
+                                <?php endforeach; ?>
+                                <div id="no_apparatus_match" class="multi-select-item text-muted" style="display:none;">No matches found.</div>
+                            </div>
+                        </div>
+                        <p class="text-muted small mt-1 mb-0">Click the box to search and select apparatus.</p>
+                    </div>
+                    
+                    <div class="filter-column col-span-1">
+                        <label for="type_filter" class="form-label">Filter Apparatus Type (List Filter)</label>
+                        <select name="type_filter" id="type_filter" class="form-select">
+                            <option value="">-- All Types --</option>
+                            <?php foreach ($uniqueApparatusTypes as $type): ?>
+                                <option
+                                    value="<?= htmlspecialchars($type) ?>"
+                                    <?= (strtolower($type_filter) === strtolower($type)) ? 'selected' : '' ?>
+                                >
+                                    <?= htmlspecialchars(ucfirst($type)) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-column col-span-1">
+                        <label for="form_type_filter" class="form-label">Filter Form Type (History Filter)</label>
+                        <select name="form_type_filter" id="form_type_filter" class="form-select">
+                            <option value="">-- All Form Types --</option>
+                            <option value="borrow" <?= (strtolower($form_type_filter) === 'borrow') ? 'selected' : '' ?>>Direct Borrow</option>
+                            <option value="reserved" <?= (strtolower($form_type_filter) === 'reserved') ? 'selected' : '' ?>>Reservation Request</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="col-md-3">
-                    <label for="apparatus_id" class="form-label">Specific Apparatus (History Filter)</label>
-                    <select name="apparatus_id" id="apparatus_id" class="form-select">
-                        <option value="">-- All Apparatus --</option>
-                        <?php foreach ($allApparatus as $app): ?>
-                            <option
-                                value="<?= htmlspecialchars($app['id']) ?>"
-                                <?= ((string)$apparatus_filter_id === (string)$app['id']) ? 'selected' : '' ?>
-                            >
-                                <?= htmlspecialchars($app['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                
-                <div class="col-md-3">
-                    <label for="type_filter" class="form-label">Filter Apparatus Type (List Filter)</label>
-                    <select name="type_filter" id="type_filter" class="form-select">
-                        <option value="">-- All Types --</option>
-                        <?php foreach ($uniqueApparatusTypes as $type): ?>
-                            <option
-                                value="<?= htmlspecialchars($type) ?>"
-                                <?= (strtolower($type_filter) === strtolower($type)) ? 'selected' : '' ?>
-                            >
-                                <?= htmlspecialchars(ucfirst($type)) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                
-                <div class="col-md-3">
-                    <label for="form_type_filter" class="form-label">Filter Form Type (History Filter)</label>
-                    <select name="form_type_filter" id="form_type_filter" class="form-select">
-                        <option value="">-- All Form Types --</option>
-                        <option value="borrow" <?= (strtolower($form_type_filter) === 'borrow') ? 'selected' : '' ?>>Direct Borrow</option>
-                        <option value="reserved" <?= (strtolower($form_type_filter) === 'reserved') ? 'selected' : '' ?>>Reservation Request</option>
-                    </select>
-                </div>
+                <div class="filter-row align-items-end">
+                    <div class="filter-column col-span-1">
+                        <label for="status_filter" class="form-label">Filter Status (History Filter)</label>
+                        <select name="status_filter" id="status_filter" class="form-select">
+                            <option value="">-- All Statuses --</option>
+                            <option value="waiting_for_approval" <?= ($status_filter === 'waiting_for_approval') ? 'selected' : '' ?>>Pending Approval</option>
+                            <option value="approved" <?= ($status_filter === 'approved') ? 'selected' : '' ?>>Reserved (Approved)</option>
+                            <option value="borrowed" <?= ($status_filter === 'borrowed') ? 'selected' : '' ?>>Currently Borrowed</option>
+                            <option value="borrowed_reserved" <?= ($status_filter === 'borrowed_reserved') ? 'selected' : '' ?>>All Active/Completed Forms</option>
+                            <option value="overdue" <?= ($status_filter === 'overdue') ? 'selected' : '' ?>>** Overdue **</option>
+                            <option value="returned" <?= ($status_filter === 'returned') ? 'selected' : '' ?>>Returned (On Time)</option>
+                            <option value="late_returns" <?= ($status_filter === 'late_returns') ? 'selected' : '' ?>>Returned (LATE)</option>
+                            <option value="damaged" <?= ($status_filter === 'damaged') ? 'selected' : '' ?>>Damaged/Lost</option>
+                            <option value="rejected" <?= ($status_filter === 'rejected') ? 'selected' : '' ?>>Rejected</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-column col-span-2">
+                        <label class="form-label fw-bold">Date Range (Form Created)</label>
+                        <div class="filter-date-group">
+                            <div>
+                                <label for="start_date" class="form-label small text-muted mb-0">Start Date</label>
+                                <input type="date" name="start_date" id="start_date" class="form-control"
+                                        value="<?= htmlspecialchars($start_date) ?>">
+                            </div>
+                            <div>
+                                <label for="end_date" class="form-label small text-muted mb-0">End Date</label>
+                                <input type="date" name="end_date" id="end_date" class="form-control"
+                                        value="<?= htmlspecialchars($end_date) ?>">
+                            </div>
+                        </div>
+                    </div>
 
-                <div class="col-md-3">
-                    <label for="status_filter" class="form-label">Filter Status (History Filter)</label>
-                    <select name="status_filter" id="status_filter" class="form-select">
-                        <option value="">-- All Statuses --</option>
-                        <option value="waiting_for_approval" <?= ($status_filter === 'waiting_for_approval') ? 'selected' : '' ?>>Pending Approval</option>
-                        <option value="approved" <?= ($status_filter === 'approved') ? 'selected' : '' ?>>Reserved (Approved)</option>
-                        <option value="borrowed" <?= ($status_filter === 'borrowed') ? 'selected' : '' ?>>Currently Borrowed</option>
-                        <option value="borrowed_reserved" <?= ($status_filter === 'borrowed_reserved') ? 'selected' : '' ?>>All Active/Completed Forms</option>
-                        <option value="overdue" <?= ($status_filter === 'overdue') ? 'selected' : '' ?>>** Overdue **</option>
-                        <option value="returned" <?= ($status_filter === 'returned') ? 'selected' : '' ?>>Returned (On Time)</option>
-                        <option value="late_returns" <?= ($status_filter === 'late_returns') ? 'selected' : '' ?>>Returned (LATE)</option>
-                        <option value="damaged" <?= ($status_filter === 'damaged') ? 'selected' : '' ?>>Damaged/Lost</option>
-                        <option value="rejected" <?= ($status_filter === 'rejected') ? 'selected' : '' ?>>Rejected</option>
-                    </select>
-                </div>
-                
-                <div class="col-md-3">
-                    <label for="start_date" class="form-label">Start Date (Form Created)</label>
-                    <input type="date" name="start_date" id="start_date" class="form-control"
-                                             value="<?= htmlspecialchars($start_date) ?>">
-                </div>
-                <div class="col-md-3">
-                    <label for="end_date" class="form-label">End Date (Form Created)</label>
-                    <input type="date" name="end_date" id="end_date" class="form-control"
-                                             value="<?= htmlspecialchars($end_date) ?>">
-                </div>
-
-                <div class="col-md-3 d-flex align-items-end justify-content-end">
-                    <button type="submit" class="btn btn-primary me-2">Apply Filters</button>
-                    <a href="staff_report.php" class="btn btn-secondary">Clear</a>
+                    <div class="filter-column col-span-1 filter-buttons d-flex align-items-end justify-content-end">
+                        <button type="submit" class="btn btn-primary me-2">Apply Filters</button>
+                        <a href="staff_report.php" class="btn btn-secondary">Clear</a>
+                    </div>
                 </div>
             </form>
-            <p class="text-muted small mt-2 mb-0">Note: Filters apply to either the **Detailed Transaction History** or **Detailed Apparatus List** based on your selected view type.</p>
+            <p class="text-muted small mt-3 mb-0">Note: Filters apply to either the **Detailed Transaction History** or **Detailed Apparatus List** based on your selected view type.</p>
         </div>
         
         <div class="report-section print-summary print-target" id="report-summary">
@@ -685,7 +947,7 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     
-    // --- JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
+    // --- JAVASCRIPT FOR STAFF NOTIFICATION LOGIC (Unchanged) ---
     
     // 1. Function to handle clicking a notification link
     window.handleNotificationClick = function(event, element, notificationId) {
@@ -737,7 +999,6 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             const $viewAllLink = $dropdown.find('a[href="staff_pending.php"]').detach();
             
             // Clear previous dynamic content
-            // We clear everything between the header and the View All link
             $dropdown.children().not($header).not($viewAllLink).remove();
             
             // Update badge display
@@ -751,7 +1012,7 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
                 
                 // A. Mark All button (Must be inserted first)
                 if (unreadCount > 0) {
-                     contentToInsert.push(`
+                        contentToInsert.push(`
                             <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
                                 <i class="fas fa-check-double me-1"></i> Mark All ${unreadCount} as Read
                             </a>
@@ -797,7 +1058,6 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             // 5. Re-append the 'View All' link to the end of the dropdown
             $dropdown.append($viewAllLink);
             
-
         }).fail(function(jqXHR, textStatus, errorThrown) {
             console.error("Error fetching staff notifications:", textStatus, errorThrown);
             $('#notification-bell-badge').text('0').hide();
@@ -805,9 +1065,114 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
     }
     // --- END JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
 
+    // Function to set the max attribute of a date input to today's date
+    function setMaxDateToToday(elementId) {
+        const today = new Date();
+        const year = today.getFullYear();
+        // Month is 0-indexed, so add 1, and pad with 0
+        const month = String(today.getMonth() + 1).padStart(2, '0'); 
+        // Day of the month, padded with 0
+        const day = String(today.getDate()).padStart(2, '0');
+        
+        const maxDate = `${year}-${month}-${day}`;
+        
+        const dateInput = document.getElementById(elementId);
+        if (dateInput) {
+            dateInput.setAttribute('max', maxDate);
+        }
+    }
+
+    // --- NEW JAVASCRIPT FOR APPARATUS MULTI-SELECT ---
+    
+    // Function to update the hidden input and re-render tags
+    function updateApparatusSelection() {
+        const tagsContainer = document.getElementById('selected_apparatus_tags');
+        const searchInput = document.getElementById('apparatus_search_input');
+        
+        // Find and remove all existing hidden inputs that carry the form data
+        document.querySelectorAll('input[name="apparatus_ids[]"]').forEach(input => input.remove());
+        
+        tagsContainer.innerHTML = ''; // Clear visual tags
+        const selectedItems = [];
+
+        document.querySelectorAll('.multi-select-item').forEach(item => {
+            if (item.getAttribute('data-selected') === 'true') {
+                const id = item.getAttribute('data-id');
+                const name = item.getAttribute('data-name');
+                selectedItems.push(id);
+
+                // Create and append the new tag
+                const tag = document.createElement('span');
+                tag.className = 'selected-tag';
+                tag.setAttribute('data-id', id);
+                tag.innerHTML = `${name}<span class="selected-tag-remove">&times;</span>`;
+                
+                // Attach removal event handler to the newly created tag
+                tag.querySelector('.selected-tag-remove').addEventListener('click', function(e) {
+                    e.stopPropagation(); // Stop event from propagating to the search input/container
+                    // Find the corresponding dropdown item and unselect it
+                    const dropdownItem = document.querySelector(`#apparatus_dropdown .multi-select-item[data-id="${id}"]`);
+                    if (dropdownItem) {
+                        dropdownItem.classList.remove('selected');
+                        dropdownItem.setAttribute('data-selected', 'false');
+                    }
+                    updateApparatusSelection(); // Re-render and update hidden input
+                    searchInput.focus();
+                });
+
+                tagsContainer.appendChild(tag);
+            }
+        });
+
+        // -------------------------------------------------------------------
+        // ** KEY CHANGE: Toggle visibility based on selected items count **
+        // -------------------------------------------------------------------
+        if (selectedItems.length === 0) {
+            tagsContainer.classList.add('is-empty');
+        } else {
+            tagsContainer.classList.remove('is-empty');
+            // Add hidden inputs for form submission directly to the tags container
+            selectedItems.forEach(id => {
+                const newHiddenInput = document.createElement('input');
+                newHiddenInput.type = 'hidden';
+                newHiddenInput.name = 'apparatus_ids[]';
+                newHiddenInput.value = id;
+                tagsContainer.appendChild(newHiddenInput);
+            });
+        }
+    }
+    
+    // Function to filter items based on search term
+    function filterDropdownItems(searchTerm) {
+        let matchFound = false;
+        const dropdownItems = document.querySelectorAll('#apparatus_dropdown .multi-select-item');
+        const noMatchItem = document.getElementById('no_apparatus_match');
+        
+        dropdownItems.forEach(item => {
+            if (item === noMatchItem) return;
+            
+            const itemName = item.getAttribute('data-name').toLowerCase();
+            const isMatch = itemName.includes(searchTerm.toLowerCase());
+            item.style.display = isMatch ? 'block' : 'none';
+            if (isMatch) {
+                matchFound = true;
+            }
+        });
+        noMatchItem.style.display = matchFound ? 'none' : 'block';
+    }
+    // --- END NEW JAVASCRIPT FOR APPARATUS MULTI-SELECT ---
+
 
     document.addEventListener('DOMContentLoaded', () => {
-        // --- Sidebar Activation ---
+        
+        // ----------------------------------------------------
+        // >> FIX: Enforce Maximum Date (Today)
+        // ----------------------------------------------------
+        setMaxDateToToday('start_date');
+        setMaxDateToToday('end_date');
+        // ----------------------------------------------------
+
+        // --- Sidebar Activation (Unchanged) ---
         const path = window.location.pathname.split('/').pop() || 'staff_dashboard.php';
         const links = document.querySelectorAll('.sidebar .nav-link');
         
@@ -821,7 +1186,7 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             }
         });
         
-        // --- Mobile Toggle Logic (Simplified for brevity) ---
+        // --- Mobile Toggle Logic (Unchanged) ---
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const mainContent = document.querySelector('.main-content'); 
@@ -854,31 +1219,98 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             });
         }
         
-        // --- Filter Submission Logic ---
-        const statusFilter = document.getElementById('statusFilter');
-        const form = document.getElementById('transactionFilterForm');
-
-        if (statusFilter && form) {
-            statusFilter.addEventListener('change', function() {
-                form.submit();
-            });
-        }
-        
         // --- Report View Handler ---
         document.getElementById('report_view_type_select').addEventListener('change', updateHubView);
         document.getElementById('main-print-button').addEventListener('click', handlePrint);
         
+        // --- Initial view update ---
+        updateHubView();
+
         // --- Notification Initialization ---
         fetchStaffNotifications();
         setInterval(fetchStaffNotifications, 30000); 
+
+
+        // --- Apparatus Filter Logic Initialization ---
+        const searchInput = document.getElementById('apparatus_search_input');
+        const dropdown = document.getElementById('apparatus_dropdown');
+        const dropdownItems = document.querySelectorAll('#apparatus_dropdown .multi-select-item');
+        
+        // 1. Initial update to populate the hidden input/tags on load (from URL parameters)
+        updateApparatusSelection(); 
+
+        // 2. Dropdown Toggle (Focus/Blur)
+        searchInput.addEventListener('focus', () => {
+            dropdown.style.display = 'block';
+            searchInput.placeholder = 'Type to filter options...';
+            // Show all options when focused
+            filterDropdownItems(''); 
+        });
+        
+        // Set placeholder back on blur, but delay hiding the dropdown to allow clicks
+        searchInput.addEventListener('blur', () => {
+            searchInput.placeholder = 'Search and select apparatus...';
+        });
+
+        document.addEventListener('click', (e) => {
+            const container = document.querySelector('.multi-select-container');
+            // Hide dropdown if click is outside the container
+            if (container && !container.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+        
+        // 3. Filtering on Keyup
+        searchInput.addEventListener('keyup', (e) => {
+            filterDropdownItems(searchInput.value);
+        });
+
+        // 4. Selection Logic on Click
+        dropdownItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent the body click listener from immediately closing the dropdown
+
+                const isSelected = item.getAttribute('data-selected') === 'true';
+                
+                if (isSelected) {
+                    item.classList.remove('selected');
+                    item.setAttribute('data-selected', 'false');
+                } else {
+                    item.classList.add('selected');
+                    item.setAttribute('data-selected', 'true');
+                }
+                
+                updateApparatusSelection();
+                // Keep the input active for further selection/searching
+                searchInput.focus(); 
+                
+                // Clear the search field after selection/unselection to reveal all matching items
+                searchInput.value = '';
+                filterDropdownItems(''); 
+            });
+        });
+
+        // 5. Handle 'Clear' button to also clear the custom multi-select
+        const clearButton = document.querySelector('.filter-buttons a[href="staff_report.php"]');
+        if (clearButton) {
+            clearButton.addEventListener('click', () => {
+                // Unselect all items visually and logically before navigating
+                document.querySelectorAll('#apparatus_dropdown .multi-select-item').forEach(item => {
+                    item.classList.remove('selected');
+                    item.setAttribute('data-selected', 'false');
+                });
+                updateApparatusSelection(); // Clears the hidden inputs and hides the tag container
+            });
+        }
     });
 
-    // --- REPORT UTILITY FUNCTIONS ---
+    // --- REPORT UTILITY FUNCTIONS (Unchanged) ---
     function handlePrint() {
         const viewType = document.getElementById('report_view_type_select').value;
         document.body.setAttribute('data-print-view', viewType);
         window.print();
         setTimeout(() => {
+            // Remove attribute after printing is initiated/done to restore screen view styles
             document.body.removeAttribute('data-print-view');
         }, 100);
     }
@@ -902,6 +1334,7 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             });
             printButton.textContent = 'Print All Sections (Hub View)';
         } else if (viewType === 'summary' || viewType === 'inventory' || viewType === 'detailed' || viewType === 'apparatus_list') {
+            // Map the view type to the actual element ID
             const targetId = viewType === 'detailed' ? 'detailed-table' : (viewType === 'apparatus_list' ? 'apparatus-list' : viewType);
             const el = document.getElementById(`report-${targetId}`);
             if (el) el.style.display = 'block';
