@@ -1,7 +1,6 @@
 <?php
-// student_notifications_content.php (NOW A CONTENT ENDPOINT FOR MODAL)
+
 session_start();
-// Include the PHPMailer autoloader first (assuming it's in vendor)
 require_once "../vendor/autoload.php"; 
 require_once "../classes/Transaction.php";
 require_once "../classes/Database.php"; 
@@ -16,7 +15,7 @@ $student_id = $_SESSION["user"]["id"];
 
 $notifications = [];
 
-// Helper to format timestamps nicely (replicate the function here or ensure it's globally available)
+
 function time_ago($timestamp) {
     $datetime = new DateTime($timestamp);
     $now = new DateTime();
@@ -30,7 +29,7 @@ function time_ago($timestamp) {
     return "just now";
 }
 
-// Injecting the theme variables and enhanced CSS
+
 echo '<style>
     /* Theme Variables for consistency */
     :root {
@@ -117,7 +116,7 @@ echo '<style>
 try {
     $conn = $transaction->connect();
     
-    // Fetch alerts ordered by newest first
+
     $stmt_alerts = $conn->prepare("
         SELECT id, type, message, link, created_at, is_read
         FROM notifications 
@@ -128,13 +127,13 @@ try {
     $stmt_alerts->execute([':user_id' => $student_id]);
     $notifications = $stmt_alerts->fetchAll(PDO::FETCH_ASSOC);
 
-    // FIX: Calculate unread count by filtering where is_read is 0
+    
     $unread_count = count(array_filter($notifications, fn($n) => $n['is_read'] == 0)); 
     
-    // --- 1. Render Mark All Button ---
+    
     if ($unread_count > 0) {
         echo '<div class="mb-3 text-end">';
-        // CRITICAL: Button calls the global JS function markAllAsRead()
+       
         echo '  <button type="button" class="btn-mark-all" onclick="markAllAsRead()">';
         echo '      <i class="fas fa-check-double me-1"></i> Mark All ' . $unread_count . ' as Read';
         echo '  </button>';
@@ -144,23 +143,23 @@ try {
     }
 
 
-    // --- 2. Render HTML Content for the Modal/Overlay ---
+  
     if (!empty($notifications)):
         foreach ($notifications as $n):
-            // The is_read status here is based on what the DB returned
+            
             $is_read = $n['is_read'];
             $alert_class = $is_read ? 'alert-read' : 'alert-unread';
             
-            // Determine icon and link behavior
+            
             $icon = 'fas fa-info-circle text-secondary'; 
             if (strpos($n['type'], 'approved') !== false || strpos($n['type'], 'good') !== false) {
-                // Approved/Good Status: Success Green
+              
                 $icon = 'fas fa-check-circle text-success';
             } elseif (strpos($n['type'], 'rejected') !== false || strpos($n['type'], 'damaged') !== false || strpos($n['type'], 'late') !== false || strpos($n['type'], 'overdue') !== false) {
-                // Critical/Bad Status: Danger Red
+                
                 $icon = 'fas fa-exclamation-triangle text-danger';
             } elseif (strpos($n['type'], 'sent') !== false || strpos($n['type'], 'checking') !== false || strpos($n['type'], 'verification') !== false) {
-                // Pending/In-progress Status: Primary Red (Theme Color)
+              
                 $icon = 'fas fa-hourglass-half text-primary';
             }
             ?>

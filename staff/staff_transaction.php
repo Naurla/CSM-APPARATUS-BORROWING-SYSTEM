@@ -1,6 +1,6 @@
 <?php
 session_start();
-// Include the Transaction class (now BCNF-compliant)
+
 require_once "../classes/Transaction.php";
 
 if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'staff') {
@@ -10,50 +10,43 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'staff') {
 
 $transaction = new Transaction();
 
-// --- 1. RETRIEVE ALL FILTER PARAMETERS (Matches the form fields) ---
+
 $status_filter = $_GET['status_filter'] ?? 'all'; 
 $search_term = $_GET['search'] ?? '';
 $start_date = $_GET['start_date'] ?? '';
 $end_date = $_GET['end_date'] ?? '';
 
-// MODIFIED: Apparatus filter is now an array (multi-select)
+
 $apparatus_ids = $_GET['apparatus_ids'] ?? [];
 $apparatus_ids = array_filter(is_array($apparatus_ids) ? $apparatus_ids : []);
-$apparatus_ids_str = array_map('strval', $apparatus_ids); // String version for comparison
+$apparatus_ids_str = array_map('strval', $apparatus_ids); 
 
-// NOTE: Since multi-select is now client-side, we pass an empty/single filter to the backend.
-// We'll pass the first ID to the backend query if any are selected, or keep it empty.
 $backend_apparatus_filter = empty($apparatus_ids_str) ? '' : $apparatus_ids_str[0];
 
-$apparatus_type = ''; // Apparatus Type filter is permanently disabled/removed
-// ------------------------------------------------------------------
+$apparatus_type = ''; 
 
-// --- DATA RETRIEVAL FOR DROPDOWNS (Assuming these methods exist) ---
+
+
 $allApparatus = $transaction->getAllApparatus() ?? [];
-// ------------------------------------------------------------------
 
-// --- 2. FETCH TRANSACTIONS using ALL filters ---
-// Fetch transactions filtered by the main criteria (Status, Date, Search). 
-// Since backend doesn't support multi-ID, we rely on the PHP display filter below.
+
 $transactions = $transaction->getAllFormsFiltered(
     $status_filter, 
     $search_term, 
     $start_date, 
     $end_date,
-    $backend_apparatus_filter, // Use the first ID or none, rely on display filtering
+    $backend_apparatus_filter, 
     $apparatus_type 
 );
-// ------------------------------------------------------------------
 
-// --- Helper function (needs to stay here or be moved to Transaction class) ---
 function isOverdue($expected_return_date) {
     if (!$expected_return_date) return false;
     $expected_date = new DateTime($expected_return_date);
     $today = new DateTime();
-    // Compare dates only (ignore time)
+   
     return $expected_date->format('Y-m-d') < $today->format('Y-m-d');
 }
-// -----------------------------------------------------------------------------
+
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -76,7 +69,7 @@ function isOverdue($expected_return_date) {
             --main-text: #333;
             --label-bg: #e9ecef;
 
-            /* Standardized Status Colors */
+           
             --status-pending-bg: #ffc10730;
             --status-pending-color: #b8860b;
             --status-borrowed-bg: #cce5ff;
@@ -98,7 +91,7 @@ function isOverdue($expected_return_date) {
             overflow-x: hidden;
         }
         
-        /* NEW CSS for Mobile Toggle */
+      
         .menu-toggle {
             display: none;
             position: fixed;
@@ -113,7 +106,7 @@ function isOverdue($expected_return_date) {
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
-        /* --- Top Header Bar Styles --- */
+        
         .top-header-bar {
             position: fixed;
             top: 0;
@@ -171,7 +164,7 @@ function isOverdue($expected_return_date) {
             border-top: 1px solid #eee;
             border-bottom: 1px solid #eee;
         }
-        /* --- END Top Header Bar Styles --- */
+   
         
         
         .sidebar {
@@ -221,7 +214,7 @@ function isOverdue($expected_return_date) {
         .sidebar-nav .nav-link:hover { background-color: var(--msu-red-dark); }
         .sidebar-nav .nav-link.active { background-color: var(--msu-red-dark); }
         
-        /* --- FINAL LOGOUT FIX --- */
+       
         .logout-link {
             margin-top: auto; 
             padding: 0; 
@@ -245,13 +238,13 @@ function isOverdue($expected_return_date) {
         .logout-link .nav-link:hover {
             background-color: var(--msu-red-dark) !important;
         }
-        /* --- END FINAL LOGOUT FIX --- */
+        
 
         .main-content {
             margin-left: var(--sidebar-width); 
             flex-grow: 1;
             padding: 30px;
-            /* CRITICAL: Adjusted for fixed header */
+            
             padding-top: calc(var(--header-height) + 30px); 
             width: calc(100% - var(--sidebar-width)); 
         }
@@ -272,7 +265,7 @@ function isOverdue($expected_return_date) {
             font-size: 2rem; 
         }
         
-        /* --- FILTER FORM STYLING FOR BETTER UI --- */
+      
         .filter-group {
             border: 1px solid #ddd;
             border-radius: 8px;
@@ -288,22 +281,22 @@ function isOverdue($expected_return_date) {
         .filter-actions {
             display: flex;
             gap: 10px;
-            /* Ensure buttons stretch nicely */
+          
             width: 100%; 
         }
-        /* --- END FILTER FORM STYLING --- */
+        
 
 
         
         .table-responsive {
             border-radius: 8px;
-            /* CRITICAL: Allows table to scroll horizontally if necessary */
+          
             overflow-x: auto; 
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
             margin-top: 25px; 
         }
         
-        /* Ensure the table is wide enough to contain content and trigger scroll */
+        
         .table {
              min-width: 1350px;
              border-collapse: separate; 
@@ -320,46 +313,43 @@ function isOverdue($expected_return_date) {
             white-space: nowrap;
         }
         
-        /* IMPORTANT: Apply a vertical-align to the item column for better presentation */
+        
         .table tbody td {
-            vertical-align: top; /* Changed from middle to top */
+            vertical-align: top; 
             font-size: 0.95rem; 
             padding: 8px 4px; 
             text-align: center;
-            border-bottom: 1px solid #e9ecef; /* Default separator for every row */
+            border-bottom: 1px solid #e9ecef; 
         }
         
         
-        /* --- ITEM-SPECIFIC CELL STYLE (NEW) --- */
+      
         td.item-cell {
             text-align: left !important;
             padding: 8px 10px !important; 
         }
 
-        /* --- VISUAL SEPARATION ENHANCEMENT (MODIFIED FOR NO ROWSPAN) --- */
-        /* Target the FIRST item row of each form to apply a strong top border */
         .table tbody tr.item-row.first-item-of-group td {
-            border-top: 2px solid #ccc; /* Strong border for group start */
+            border-top: 2px solid #ccc; 
         }
 
-        /* Adjust the very first row of the entire table */
+        
         .table tbody tr:first-child.item-row.first-item-of-group td {
-             border-top: 0; /* Remove top border on the very first row of the table */
+             border-top: 0; 
         }
         
-        /* Define column widths for better layout balance */
-        .table th:nth-child(1) { width: 5%; } /* Form ID */
-        .table th:nth-child(2) { width: 15%; } /* Student Details */
-        .table th:nth-child(3) { width: 7%; } /* Type */
-        .table th:nth-child(4) { width: 10%; } /* Status */
-        .table th:nth-child(5) { width: 8%; } /* Borrow Date */
-        .table th:nth-child(6) { width: 10%; } /* Expected Return */
-        .table th:nth-child(7) { width: 10%; } /* Actual Return */
-        .table th:nth-child(8) { width: 15%; } /* Apparatus (Item & Status) */
-        .table th:nth-child(9) { width: 20%; } /* Staff Remarks */
+        .table th:nth-child(1) { width: 5%; }
+        .table th:nth-child(2) { width: 15%; } 
+        .table th:nth-child(3) { width: 7%; } 
+        .table th:nth-child(4) { width: 10%; } 
+        .table th:nth-child(5) { width: 8%; } 
+        .table th:nth-child(6) { width: 10%; } 
+        .table th:nth-child(7) { width: 10%; } 
+        .table th:nth-child(8) { width: 15%; } 
+        .table th:nth-child(9) { width: 20%; } 
 
         
-        /* --- STATUS TAGS & COLORS (PROFESSIONAL FIX) --- */
+     
         .status-tag {
             display: inline-block;
             padding: 4px 8px; 
@@ -372,7 +362,7 @@ function isOverdue($expected_return_date) {
             border: 1px solid transparent;
         }
 
-        /* Dedicated status styles for item status table */
+        
         .status-tag.returned { 
              background-color: #e9ecef; 
              color: #333; 
@@ -385,17 +375,17 @@ function isOverdue($expected_return_date) {
              font-weight: 800; 
         }
         
-        /* Standard Colors (Lighter background, dark text for better contrast) */
+        
         .status-tag.waiting_for_approval, .status-tag.pending, .status-tag.reserved { background-color: var(--status-pending-bg); color: var(--status-pending-color); border-color: #ffeeba; }
         .status-tag.approved, .status-tag.borrowed, .status-tag.checking { background-color: var(--status-borrowed-bg); color: var(--status-borrowed-color); border-color: #b8daff; }
         .status-tag.rejected { background-color: var(--status-rejected-bg); color: var(--status-rejected-color); border-color: #ccc; }
         .status-tag.overdue, .status-tag.returned-late { background-color: var(--status-overdue-bg); color: var(--status-overdue-color); border-color: #f5c6cb; }
         
         
-        /* --- RESPONSIVE CSS --- */
+     
         
         @media (max-width: 992px) {
-            /* Enable mobile toggle and shift main content */
+
             .menu-toggle { display: block; }
             .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; } 
             .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
@@ -404,18 +394,18 @@ function isOverdue($expected_return_date) {
             .content-area { padding: 20px 15px; }
             .page-header { font-size: 1.8rem; }
             
-            /* Filter/Search stacking below 992px */
+          
             .filter-group .row > div {
                 margin-top: 10px;
             }
             .filter-group .row > div:first-child { margin-top: 0; }
             .filter-actions {
-                flex-direction: column; /* Stack buttons vertically on tablets */
+                flex-direction: column; 
             }
         }
 
         @media (max-width: 768px) {
-            /* Mobile Stacking for tables (replaces horizontal scroll) */
+           
              .table { min-width: auto; }
              .table thead { display: none; }
              .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
@@ -429,7 +419,7 @@ function isOverdue($expected_return_date) {
              }
              
              .table tbody tr.item-row.first-item-of-group td {
-                 border-top: 1px solid #ddd !important; /* Reset from desktop style */
+                 border-top: 1px solid #ddd !important; 
              }
 
              .table td {
@@ -441,7 +431,6 @@ function isOverdue($expected_return_date) {
                  white-space: normal;
              }
              
-             /* Remove bottom border on the last cell of each mobile row to clean up spacing */
              .table tbody tr td:last-child {
                  border-bottom: none !important;
              }
@@ -464,12 +453,12 @@ function isOverdue($expected_return_date) {
              }
              
              .table tbody tr.item-row.first-item-of-group {
-                 /* Separate visual form groups with space in mobile view */
+                 
                  margin-top: 20px; 
              }
 
-             /* Special Mobile Styling for key cells (Form ID / Student Details) */
-             .table tbody tr td:nth-child(1) { /* Form ID - Use full width label, no separator on its own line */
+             
+             .table tbody tr td:nth-child(1) { 
                  font-size: 1rem;
                  font-weight: 700;
                  text-align: left !important;
@@ -484,7 +473,7 @@ function isOverdue($expected_return_date) {
                  font-size: 0.9rem;
                  font-weight: 600;
              }
-             .table tbody tr td:nth-child(2) { /* Student Details */
+             .table tbody tr td:nth-child(2) { 
                  font-size: 1.05rem;
                  font-weight: 700;
                  color: var(--main-text);
@@ -493,7 +482,7 @@ function isOverdue($expected_return_date) {
              .table tbody tr td:nth-child(2)::before {
                  font-weight: 700;
                  color: var(--msu-red-dark);
-                 background-color: #f8d7da; /* Light red background */
+                 background-color: #f8d7da; 
                  padding-left: 0;
                  left: 0;
                  width: 50%;
@@ -508,10 +497,9 @@ function isOverdue($expected_return_date) {
              .main-content { padding: 10px; padding-top: calc(var(--header-height) + 10px); }
              .content-area { padding: 10px; }
              .top-header-bar { padding-left: 65px; }
-             .filter-actions { flex-direction: column; } /* Keep buttons stacked on small phones */
+             .filter-actions { flex-direction: column; } 
         }
         
-        /* Multi-select filter UI styles (copied from staff_report.php for consistency) */
         .multi-select-container { position: relative; z-index: 10; }
         .multi-select-dropdown {
             position: absolute; width: 100%; max-height: 200px; overflow-y: auto;
@@ -631,11 +619,11 @@ function isOverdue($expected_return_date) {
                         
                         <div id="selected_apparatus_tags" class="selected-tags-container <?= empty($apparatus_ids_str) ? 'is-empty' : '' ?>">
                             <?php 
-                            // Re-render selected items as tags
+                            
                             foreach ($allApparatus as $app) {
                                 if (in_array((string)$app['id'], $apparatus_ids_str)) {
                                     echo '<span class="selected-tag" data-id="' . htmlspecialchars($app['id']) . '">' . htmlspecialchars($app['name']) . '<span class="selected-tag-remove">&times;</span></span>';
-                                    // Hidden input fields will be dynamically added by JavaScript on selection/load
+                                  
                                 }
                             }
                             ?>
@@ -706,7 +694,7 @@ function isOverdue($expected_return_date) {
                     <?php 
                         $previous_form_id = null;
                         
-                        // Create a temporary array to store forms that still have matching items
+                      
                         $transactions_to_display = [];
 
                         if (!empty($transactions)): 
@@ -714,60 +702,59 @@ function isOverdue($expected_return_date) {
                             foreach ($transactions as $trans) {
                                 $form_id = $trans['id'];
                                 
-                                // Fetch all items for this form
+                              
                                 $detailed_items = $transaction->getFormItems($form_id); 
                                 
-                                // --- CRITICAL DISPLAY FILTERING LOGIC (MULTI-SELECT SUPPORT) ---
-                                // 1. Filter the items list based on the selected apparatus IDs (if applicable)
+                                
                                 if (!empty($apparatus_ids_str)) {
                                     $filtered_items = array_filter($detailed_items, function($item) use ($apparatus_ids_str) {
-                                        // Filter only items whose apparatus_id is in the selected IDs array
+                                        
                                         return isset($item['apparatus_id']) && in_array((string)$item['apparatus_id'], $apparatus_ids_str);
                                     });
-                                    // Reset array keys after filtering
+                                    
                                     $detailed_items = array_values($filtered_items);
                                 }
                                 
-                                // 2. If the detailed items array is now empty (meaning no items match the apparatus filter in this form), skip to the next form.
+                               
                                 if (empty($detailed_items)) {
                                     continue;
                                 }
 
-                                // If the form had no items initially (e.g., rejected early), ensure we loop once
+                              
                                 if (empty($detailed_items) && strtolower($trans['status']) === 'rejected') {
-                                    // Keep the rejected row if it hasn't been filtered out by the apparatus filter
+                                    
                                     $detailed_items = [null]; 
                                 }
                                 
-                                // Add the filtered form/item group to the display list
+                                
                                 $transactions_to_display[$form_id] = [
                                     'form' => $trans,
                                     'items' => $detailed_items
                                 ];
                             }
                             
-                            // Second pass: Output rows, one per item in the filtered list
+                         
                             foreach ($transactions_to_display as $form_id => $data):
                                 $trans = $data['form'];
                                 $detailed_items = $data['items'];
 
-                                // Determine the main form status/class 
+                                
                                 $form_status = strtolower($trans['status']);
 
-                                // Loop through the items for this single form
+                               
                                 foreach ($detailed_items as $index => $unit):
                                     
-                                    // Item details
+                                  
                                     $name = htmlspecialchars($unit['name'] ?? 'N/A');
                                     $unit_tag = (isset($unit['unit_id'])) ? ' (Unit ' . htmlspecialchars($unit['unit_id']) . ')' : '';
                                     
-                                    // CRITICAL: Use Item Status for the Status column
+                                    
                                     $item_status = strtolower($unit['item_status'] ?? $form_status);
                                     
                                     $item_tag_class = $item_status;
                                     $item_tag_text = ucfirst(str_replace('_', ' ', $item_status));
                                     
-                                    // Overdue check
+                                    
                                     if (($item_status === 'borrowed' || $item_status === 'approved') && isOverdue($trans['expected_return_date'])) {
                                         $item_tag_class = 'overdue';
                                         $item_tag_text = 'Overdue';
@@ -779,11 +766,11 @@ function isOverdue($expected_return_date) {
                                          $item_tag_text = 'Damaged';
                                     }
                                     
-                                    // Add a visual class if this is the first item of a new form group
+                        
                                     $row_classes = 'item-row';
                                     if ($previous_form_id !== $form_id) {
                                          $row_classes .= ' first-item-of-group';
-                                         $previous_form_id = $form_id; // Update tracker
+                                         $previous_form_id = $form_id; 
                                     }
 
                                     ?>
@@ -815,8 +802,8 @@ function isOverdue($expected_return_date) {
                                         <td data-label="Staff Remarks:"><?= htmlspecialchars($trans['staff_remarks'] ?? '-') ?></td>
                                     </tr>
                                     <?php 
-                                        endforeach; // End item loop
-                            endforeach; // End form loop 
+                                        endforeach; 
+                            endforeach; 
                                     ?>
                         <?php else: ?>
                             <tr><td colspan="9" class="text-muted py-3">No transactions found matching the selected filter or search term.</td></tr>
@@ -829,7 +816,6 @@ function isOverdue($expected_return_date) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- UTILITY FUNCTION (JavaScript Implementation) ---
     function isOverdue(expected_return_date) {
         if (!expected_return_date || expected_return_date === 'N/A') return false;
         const expected_date = new Date(expected_return_date);
@@ -839,7 +825,7 @@ function isOverdue($expected_return_date) {
         return expected_date < today;
     }
 
-    // --- Enforce Maximum Date (Today) for Date Filters ---
+
     function setMaxDateToToday(elementId) {
         const today = new Date();
         const year = today.getFullYear();
@@ -896,27 +882,22 @@ function isOverdue($expected_return_date) {
             const $badge = $('#notification-bell-badge');
             const $dropdown = $('#notification-dropdown');
             const $header = $dropdown.find('.dropdown-header');
-            
-            // Show/hide badge
+
             if (unreadCount > 0) {
                  $badge.text(unreadCount > 99 ? '99+' : unreadCount).show();
             } else {
                  $badge.text('0').hide();
             }
 
-            // Find and temporarily detach the static View All link
             const $viewAllLink = $dropdown.find('a[href="staff_pending.php"]').detach();
             
-            // Clear the obsolete placeholder content
             $dropdown.find('.dynamic-content-area').remove();
 
-            // Create a new area for dynamic content (notifications and mark-all)
             const $dynamicArea = $('<div>').addClass('dynamic-content-area');
             let contentToInsert = [];
             
             if (notifications.length > 0) {
                 
-                // 1. Mark All button (Must be inserted before notifications)
                 if (unreadCount > 0) {
                         contentToInsert.push(`
                             <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-link" href="#" onclick="event.preventDefault(); window.markAllStaffAsRead();">
@@ -925,7 +906,6 @@ function isOverdue($expected_return_date) {
                         `);
                 }
                 
-                // 2. Individual Notifications
                 notifications.slice(0, 5).forEach(notif => {
                     
                     let iconClass = 'fas fa-info-circle text-info'; 
@@ -952,17 +932,14 @@ function isOverdue($expected_return_date) {
                 });
                 
             } else {
-                // Display a "No Alerts" message
                 contentToInsert.push(`
                     <a class="dropdown-item text-center small text-muted dynamic-notif-item">No New Notifications</a>
                 `);
             }
             
-            // 3. Insert the entire dynamic content block after the header
             $dynamicArea.html(contentToInsert.join(''));
             $header.after($dynamicArea);
             
-            // 4. Re-append the 'View All' link to the end of the dropdown
             $dropdown.append($viewAllLink);
             
         }).fail(function(jqXHR, textStatus, errorThrown) {
@@ -970,18 +947,15 @@ function isOverdue($expected_return_date) {
             $('#notification-bell-badge').text('0').hide();
         });
     }
-    // --- END JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
-    
-    // --- APPARATUS MULTI-SELECT LOGIC ---
+
     
     function updateApparatusSelection() {
         const tagsContainer = document.getElementById('selected_apparatus_tags');
         const searchInput = document.getElementById('apparatus_search_input');
-        
-        // Remove existing hidden inputs for form submission
+
         document.querySelectorAll('input[name="apparatus_ids[]"]').forEach(input => input.remove());
         
-        tagsContainer.innerHTML = ''; // Clear visual tags
+        tagsContainer.innerHTML = ''; 
         const selectedItems = [];
 
         document.querySelectorAll('#apparatus_dropdown .multi-select-item').forEach(item => {
@@ -990,13 +964,11 @@ function isOverdue($expected_return_date) {
                 const name = item.getAttribute('data-name');
                 selectedItems.push(id);
 
-                // Create and append the new tag
                 const tag = document.createElement('span');
                 tag.className = 'selected-tag';
                 tag.setAttribute('data-id', id);
                 tag.innerHTML = `${name}<span class="selected-tag-remove">&times;</span>`;
                 
-                // Attach removal event handler to the newly created tag
                 tag.querySelector('.selected-tag-remove').addEventListener('click', function(e) {
                     e.stopPropagation();
                     const dropdownItem = document.querySelector(`#apparatus_dropdown .multi-select-item[data-id="${id}"]`);
@@ -1016,13 +988,11 @@ function isOverdue($expected_return_date) {
             tagsContainer.classList.add('is-empty');
         } else {
             tagsContainer.classList.remove('is-empty');
-            // Add hidden inputs for form submission
             selectedItems.forEach(id => {
                 const newHiddenInput = document.createElement('input');
                 newHiddenInput.type = 'hidden';
                 newHiddenInput.name = 'apparatus_ids[]';
                 newHiddenInput.value = id;
-                // Append the hidden input to the form container (tags container)
                 tagsContainer.appendChild(newHiddenInput); 
             });
         }
@@ -1045,18 +1015,12 @@ function isOverdue($expected_return_date) {
         });
         noMatchItem.style.display = matchFound ? 'none' : 'block';
     }
-    
-    // --- END APPARATUS MULTI-SELECT LOGIC ---
 
-
-    // Script to ensure the correct link remains active
     document.addEventListener('DOMContentLoaded', () => {
         
-        // --- Date Filter Max Date Fix ---
         setMaxDateToToday('startDateFilter');
         setMaxDateToToday('endDateFilter');
         
-        // --- Sidebar Activation ---
         const path = window.location.pathname.split('/').pop() || 'staff_dashboard.php';
         const links = document.querySelectorAll('.sidebar .nav-link');
         
@@ -1070,7 +1034,6 @@ function isOverdue($expected_return_date) {
             }
         });
         
-        // --- Mobile Toggle Logic ---
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const mainContent = document.querySelector('.main-content'); 
@@ -1078,7 +1041,6 @@ function isOverdue($expected_return_date) {
         if (menuToggle && sidebar) {
             menuToggle.addEventListener('click', () => {
                 sidebar.classList.toggle('active');
-                // Simple backdrop effect on mobile
                 if (window.innerWidth <= 992) {
                     const isActive = sidebar.classList.contains('active');
                     if (isActive) {
@@ -1091,7 +1053,6 @@ function isOverdue($expected_return_date) {
                 }
             });
             
-            // Hide sidebar if content is clicked (mobile view)
             mainContent.addEventListener('click', () => {
                 if (sidebar.classList.contains('active') && window.innerWidth <= 992) {
                     sidebar.classList.remove('active');
@@ -1100,32 +1061,27 @@ function isOverdue($expected_return_date) {
                 }
             });
             
-            // Prevent sidebar closing when clicking inside itself
             sidebar.addEventListener('click', (e) => {
                 e.stopPropagation();
             });
         }
         
-        // --- Notification Initialization ---
         fetchStaffNotifications();
         setInterval(fetchStaffNotifications, 30000); 
         
-        // --- Apparatus Multi-select Initialization ---
         const searchInput = document.getElementById('apparatus_search_input');
         const dropdown = document.getElementById('apparatus_dropdown');
         const dropdownItems = document.querySelectorAll('#apparatus_dropdown .multi-select-item');
         
-        // 1. Initial update to populate the hidden input/tags on load (from URL parameters)
+
         updateApparatusSelection(); 
 
-        // 2. Dropdown Toggle (Focus/Blur)
         searchInput.addEventListener('focus', () => {
             dropdown.style.display = 'block';
             searchInput.placeholder = 'Type to filter options...';
             filterDropdownItems(searchInput.value); 
         });
         
-        // Delay hide on blur
         document.addEventListener('click', (e) => {
             const container = document.querySelector('.multi-select-container');
             if (container && !container.contains(e.target)) {
@@ -1134,12 +1090,10 @@ function isOverdue($expected_return_date) {
             }
         });
         
-        // 3. Filtering on Keyup
         searchInput.addEventListener('keyup', () => {
             filterDropdownItems(searchInput.value);
         });
 
-        // 4. Selection Logic on Click
         dropdownItems.forEach(item => {
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1157,20 +1111,16 @@ function isOverdue($expected_return_date) {
                 updateApparatusSelection();
                 searchInput.focus(); 
                 
-                // Clear the search field to reset the dropdown filter view
                 searchInput.value = '';
                 filterDropdownItems(''); 
             });
         });
         
-        // 5. Handle 'Clear Filters' button click
         document.querySelector('.filter-actions a[href="staff_transaction.php"]').addEventListener('click', () => {
-            // Unselect all items visually and logically before navigating
             document.querySelectorAll('#apparatus_dropdown .multi-select-item').forEach(item => {
                 item.classList.remove('selected');
                 item.setAttribute('data-selected', 'false');
             });
-            // Let the natural form submission handle the URL reset
         });
     });
 </script>

@@ -17,7 +17,7 @@ if (!isset($_GET["form_id"])) {
 }
 
 $form_id = $_GET["form_id"];
-// This call will now be defined in Transaction.php:
+
 $form = $transaction->getBorrowFormById($form_id);
 
 if (!$form) {
@@ -26,23 +26,23 @@ if (!$form) {
     exit();
 }
 
-// Ensure form_type exists, default to 'Form' if not set
+
 $form_type = isset($form["form_type"]) ? ucfirst($form["form_type"]) : 'Form';
 
-// $items uses getBorrowFormItems, which fetches aggregated details via JOINs
+
 $items = $transaction->getBorrowFormItems($form_id);
 
-// --- NAVIGATION CONTEXT LOGIC FIX ---
+
 $context = $_GET["context"] ?? '';
 
-$back_url = 'student_dashboard.php'; // Default is Current Activity
+$back_url = 'student_dashboard.php'; 
 $back_text = 'Back to Current Activity';
 
 if ($context === 'history') {
     $back_url = 'student_transaction.php';
     $back_text = 'Back to Transaction History';
 }
-// ------------------------------------
+
 
 // Define the Web URL base path for the browser (assumes 'uploads/apparatus_images/' relative to pages/student/)
 $baseURL = "../uploads/apparatus_images/"; 
@@ -60,11 +60,11 @@ $baseURL = "../uploads/apparatus_images/";
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
     
     <style>
-        /* --- THEME MATCHING (Consistent Theme) --- */
+       
         :root {
-            --primary-color: #A40404; /* Dark Red / Maroon (WMSU-inspired) */
+            --primary-color: #A40404; 
             --primary-color-dark: #820303; 
-            --secondary-color: #f4b400; /* Gold/Yellow Accent */
+            --secondary-color: #f4b400;
             --text-dark: #2c3e50;
             --bg-light: #f5f6fa;
             --header-height: 60px;
@@ -86,7 +86,7 @@ $baseURL = "../uploads/apparatus_images/";
             align-items: flex-start;
         }
         
-        /* === TOP HEADER BAR STYLES === */
+      
         .top-header-bar {
             position: fixed;
             top: 0;
@@ -118,7 +118,7 @@ $baseURL = "../uploads/apparatus_images/";
             color: var(--text-dark); 
         }
         
-        /* FIX: Notification Dropdown size and spacing (Thin lines) */
+       
         .dropdown-menu { 
             min-width: 320px; 
             padding: 0; 
@@ -133,12 +133,12 @@ $baseURL = "../uploads/apparatus_images/";
             border-bottom: 1px solid #eee; 
             margin-bottom: 0; 
         }
-        /* FIX: Individual item spacing (Thin lines) */
+    
         .dropdown-item {
-            padding: 8px 15px; /* Tighter vertical padding */
+            padding: 8px 15px; 
             white-space: normal;
             transition: background-color 0.1s;
-            border-bottom: 1px dotted #eee; /* Separator for clean lines */
+            border-bottom: 1px dotted #eee; 
         }
         .dropdown-item:last-child {
             border-bottom: none;
@@ -162,19 +162,19 @@ $baseURL = "../uploads/apparatus_images/";
         }
         .mark-read-hover-btn { opacity: 0; }
         .dropdown-item:hover .mark-read-hover-btn { opacity: 1; }
-        /* === END TOP HEADER BAR STYLES === */
+      
         
         .container {
             background: #fff; 
             border-radius: 12px; 
             padding: 40px;
-            max-width: 1000px; /* Max width constraint */
+            max-width: 1000px;
             width: 100%;
             margin: 0 auto; 
             box-shadow: 0 8px 25px rgba(0,0,0,0.1);
         }
 
-        /* --- Page Header --- */
+   
         .page-header {
             color: var(--text-dark); 
             margin-bottom: 30px;
@@ -187,7 +187,7 @@ $baseURL = "../uploads/apparatus_images/";
             color: var(--secondary-color);
         }
 
-        /* --- Details Grid --- */
+    
         .form-details-grid {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -217,7 +217,6 @@ $baseURL = "../uploads/apparatus_images/";
              padding-top: 15px;
         }
     
-        /* --- Status Tag Theming --- */
         .status-tag {
             display: inline-block;
             padding: 6px 12px;
@@ -235,7 +234,6 @@ $baseURL = "../uploads/apparatus_images/";
         .status-tag.overdue, .status-tag.damaged { background-color: var(--danger-color); color: white; }
         .status-tag.checking { background-color: var(--warning-color); color: var(--text-dark); }
 
-        /* --- Items Table --- */
         .table-responsive {
             border-radius: 10px;
             overflow: hidden;
@@ -269,7 +267,7 @@ $baseURL = "../uploads/apparatus_images/";
             color: #fff;
             padding: 10px 25px;
             font-weight: 600;
-            border-radius: 50px; /* Pill shape */
+            border-radius: 50px; 
             transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
         }
         .btn-msu-red:hover {
@@ -278,7 +276,7 @@ $baseURL = "../uploads/apparatus_images/";
             transform: translateY(-1px);
         }
         
-        /* --- RESPONSIVE ADJUSTMENTS --- */
+        
         @media (max-width: 992px) {
              .top-header-bar { padding: 0 15px; justify-content: space-between; }
              .notification-bell-container { margin-right: 15px; }
@@ -288,7 +286,7 @@ $baseURL = "../uploads/apparatus_images/";
         @media (max-width: 768px) {
             .page-header { font-size: 1.8rem; }
             
-            /* Details grid stacking */
+            
             .form-details-grid .col-md-3, .form-details-grid .col-sm-6 {
                 width: 50%;
             }
@@ -296,23 +294,23 @@ $baseURL = "../uploads/apparatus_images/";
                 width: 100%;
             }
 
-            /* Item Table Responsive Styling */
-            .table thead th:nth-child(3), /* Type */
+           
+            .table thead th:nth-child(3), 
             .table tbody td:nth-child(3),
-            .table thead th:nth-child(4), /* Size */
+            .table thead th:nth-child(4), 
             .table tbody td:nth-child(4),
-            .table thead th:nth-child(5), /* Material */
+            .table thead th:nth-child(5), 
             .table tbody td:nth-child(5) {
-                display: none; /* Hide less critical columns */
+                display: none; 
             }
             
             .table thead th, .table tbody td {
-                padding: 10px 10px; /* Reduce padding more */
+                padding: 10px 10px; 
                 font-size: 0.9rem;
             }
             .table-image-cell { width: 60px; }
             .table-image-cell img { width: 40px !important; height: 40px !important; }
-            .table tbody td:nth-child(2) { text-align: left !important; } /* Name: Left align */
+            .table tbody td:nth-child(2) { text-align: left !important; } 
         }
         
         @media (max-width: 576px) {
@@ -324,7 +322,7 @@ $baseURL = "../uploads/apparatus_images/";
                 font-size: 0.9rem;
             }
             .form-details-grid .col-md-3, .form-details-grid .col-sm-6 {
-                width: 100%; /* Full stack on XS screens */
+                width: 100%; 
             }
         }
     </style>
@@ -573,16 +571,16 @@ $baseURL = "../uploads/apparatus_images/";
                      `);
                 });
             } else {
-                // Display a "No Alerts" message
+              
                 contentToInsert.push(`
                     <a class="dropdown-item text-center small text-muted dynamic-notif-item">No Recent Notifications</a>
                 `);
             }
             
-            // 3. Insert all dynamic content after the header
+            
             $header.after(contentToInsert.join(''));
             
-            // 4. Re-append the 'View All' link to the end of the dropdown
+           
             $dropdown.append($viewAllLink);
             
 
@@ -593,11 +591,11 @@ $baseURL = "../uploads/apparatus_images/";
     }
 
 
-    // --- DOMContentLoaded Execution (Initialization) ---
+  
     document.addEventListener('DOMContentLoaded', () => {
-        // Notification Logic Setup
-        fetchStudentAlerts(); // Initial fetch on page load
-        setInterval(fetchStudentAlerts, 30000); // Poll the server every 30 seconds
+        
+        fetchStudentAlerts(); 
+        setInterval(fetchStudentAlerts, 30000); 
     });
 </script>
 </body>

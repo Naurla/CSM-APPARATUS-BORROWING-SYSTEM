@@ -1,11 +1,10 @@
 <?php
-// student_return.php - ADDED TOP BAR AND NOTIFICATION LOGIC
+
 session_start();
-// Include the PHPMailer autoloader first (assuming it's in vendor)
 require_once "../vendor/autoload.php"; 
 require_once "../classes/Transaction.php";
-require_once "../classes/Mailer.php"; // Include Mailer class
-require_once "../classes/Database.php"; // Keep Database for base class
+require_once "../classes/Mailer.php"; 
+require_once "../classes/Database.php"; 
 
 if (!isset($_SESSION["user"]) || $_SESSION["user"]["role"] != "student") {
     header("Location: ../pages/login.php");
@@ -13,42 +12,37 @@ if (!isset($_SESSION["user"]) || $_SESSION["user"]["role"] != "student") {
 }
 
 $transaction = new Transaction();
-$mailer = new Mailer(); // Instantiate Mailer
+$mailer = new Mailer(); 
 $student_id = $_SESSION["user"]["id"];
 $message = "";
 $is_success = false;
-$email_message = ""; // To track email status
+$email_message = ""; 
 
-// --- BAN CHECK for sidebar display ---
 $isBanned = $transaction->isStudentBanned($student_id);
-// -------------------------------------
 
-// When student clicks “Return”
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["return"])) {
     $form_id = $_POST["form_id"];
     $remarks = $_POST["remarks"] ?? "";
     
-    // Uses the internal method to fetch form data from the single borrow_forms table
     $form_data = $transaction->getBorrowFormById($form_id); 
     $borrowDate = $form_data['borrow_date'];
 
     if ($borrowDate <= date("Y-m-d")) {
-        // --- Step 1: Execute Transaction (DB Commit & System Notification to staff) ---
-        // markAsChecking now handles the database updates AND the email confirmation internally.
+
         if ($transaction->markAsChecking($form_id, $student_id, $remarks)) {
             
-            // Final message shown to student - adjusted to confirm email was sent (by Transaction.php)
+            
             $message = "Your return request (ID: $form_id) has been submitted and is pending staff verification. A confirmation email has been sent.";
             $is_success = true;
 
         } else {
-            // --- FIX: Improved Error Message Block ---
+          
             $form_status_check = $transaction->getBorrowFormById($form_id);
             $current_status = $form_status_check['status'] ?? 'Unknown/Missing';
             
             $message = "Failed to submit return request for ID $form_id. Current database status is {$current_status}. The item may be fully returned, rejected, or already pending check.";
             $is_success = false;
-            // --- END FIX ---
+            
         }
     } else {
         $message = "Cannot submit return yet. The borrow date ($borrowDate) for this request is in the future.";
@@ -56,7 +50,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["return"])) {
     }
 }
 
-// FIX: Fetch all relevant active/pending forms, including 'overdue' and 'checking'
 $activeForms = $transaction->getStudentFormsByStatus($student_id, 'borrowed,approved,reserved,overdue,checking');
 $today = date("Y-m-d"); 
 ?>
@@ -73,11 +66,11 @@ $today = date("Y-m-d");
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
     
     <style>
-    /* Custom Variables and Base Layout (MSU Theme) */
+   
     :root {
-        --primary-color: #A40404; /* Dark Red / Maroon (WMSU-inspired) */
+        --primary-color: #A40404; 
         --primary-color-dark: #820303;
-        --secondary-color: #f4b400; /* Gold/Yellow Accent */
+        --secondary-color: #f4b400; 
         --text-dark: #2c3e50;
         --sidebar-width: 280px; 
         --bg-light: #f5f6fa;
@@ -99,7 +92,6 @@ $today = date("Y-m-d");
         color: var(--text-dark);
     }
     
-    /* NEW CSS for Mobile Toggle */
     .menu-toggle {
         display: none; 
         position: fixed;
@@ -115,7 +107,6 @@ $today = date("Y-m-d");
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
     
-    /* === TOP HEADER BAR STYLES (Consistent) === */
     .top-header-bar {
         position: fixed;
         top: 0;
@@ -155,11 +146,10 @@ $today = date("Y-m-d");
         font-weight: bold;
     }
     
-    /* FIX: Notification Dropdown size and spacing (Copied from dashboard fix) */
     .dropdown-menu { 
         min-width: 320px; 
         padding: 0; 
-        border-radius: 8px; /* Consistent rounded corners */
+        border-radius: 8px; 
     }
     .dropdown-header { 
         font-size: 1rem; 
@@ -169,12 +159,12 @@ $today = date("Y-m-d");
         border-bottom: 1px solid #eee; 
         margin-bottom: 0; 
     }
-    /* FIX: Individual item spacing */
+    
     .dropdown-item {
-        padding: 8px 15px; /* Tighter vertical padding */
+        padding: 8px 15px; 
         white-space: normal;
         transition: background-color 0.1s;
-        border-bottom: 1px dotted #eee; /* Separator for clean lines */
+        border-bottom: 1px dotted #eee; 
     }
     .dropdown-item:last-child {
         border-bottom: none;
@@ -195,9 +185,7 @@ $today = date("Y-m-d");
     .dropdown-item.mark-all-btn-wrapper:hover {
         background-color: #f0f0f0;
     }
-    /* === END TOP HEADER BAR STYLES === */
-
-    /* === SIDEBAR STYLES (Consistent) === */
+  
     .sidebar {
         width: var(--sidebar-width);
         min-width: var(--sidebar-width);
@@ -261,9 +249,7 @@ $today = date("Y-m-d");
     .logout-link .nav-link:hover {
         background-color: var(--primary-color-dark) !important; 
     }
-    /* END SIDEBAR FIXES */
-    
-    /* === MAIN CONTENT STYLES === */
+  
     .main-wrapper {
         margin-left: var(--sidebar-width); 
         padding: 25px;
@@ -305,7 +291,7 @@ $today = date("Y-m-d");
         border-color: #ffeeba;
     }
 
-    /* --- RETURN CARD STYLES (IMPROVED) --- */
+    
     .form-list {
         display: flex;
         flex-direction: column;
@@ -331,7 +317,7 @@ $today = date("Y-m-d");
          box-shadow: 0 6px 15px rgba(0,0,0,0.1);
     }
 
-    /* Color coding for card borders */
+    
     .return-card-checking {
         border-left: 5px solid var(--warning-color);
         background-color: #fffdf8;
@@ -388,11 +374,11 @@ $today = date("Y-m-d");
         margin-right: 5px;
     }
     .date-info .expected-return {
-        color: var(--danger-color); /* Overdue color */
+        color: var(--danger-color); 
         font-weight: 600;
     }
     .date-info .expected-return.ok {
-        color: var(--success-color); /* Good status color */
+        color: var(--success-color);
         font-weight: 600;
     }
 
@@ -420,11 +406,11 @@ $today = date("Y-m-d");
     .btn-return { 
         width: 160px; 
         padding: 12px 18px; 
-        background: var(--success-color); /* Green for 'Return' action */
+        background: var(--success-color); 
         color: white; 
         font-weight: 700;
         font-size: 1rem;
-        border-radius: 50px; /* Pill shape */
+        border-radius: 50px;
         border: none;
         transition: background-color 0.2s, transform 0.2s;
     }
@@ -451,13 +437,12 @@ $today = date("Y-m-d");
         flex-grow: 1; 
         text-align: center;
     }
-    .action-message-checking.bg-info { /* For reserved but not yet due */
+    .action-message-checking.bg-info { 
         background: #e0f7fa !important;
         color: #00796b !important;
         border: 1px solid #b2ebf2;
     }
 
-    /* --- RESPONSIVE ADJUSTMENTS --- */
     @media (max-width: 992px) {
         .menu-toggle { display: block; }
         .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; }
@@ -614,7 +599,7 @@ $today = date("Y-m-d");
                     } elseif (in_array($clean_status, ['borrowed', 'approved'])) { 
                         $card_status_class = 'return-card-borrowed';
                     } else {
-                        // For reserved status before borrow date
+                      
                         $card_status_class = 'return-card-reserved';
                     }
 
@@ -623,9 +608,6 @@ $today = date("Y-m-d");
                     $imageFile = $firstApparatus["image"] ?? 'default.jpg';
                     $imagePath = "../uploads/apparatus_images/" . $imageFile;
                     
-                    // NOTE: PHP file_exists check is not executable here, relying on path logic.
-                    // If file_exists() check was functional, it would be included here.
-
                     $action_content = '';
                     if ($is_pending_check) {
                         $action_content = '<span class="action-message-checking">
@@ -635,12 +617,12 @@ $today = date("Y-m-d");
                         (!$is_expected_return_date_reached) && 
                         ($clean_status === 'reserved' || $clean_status === 'approved')
                     ) {
-                        // Reserved/Approved but date not yet reached
+                        
                         $action_content = '<span class="action-message-checking bg-info text-white">
                                              <i class="fas fa-lock me-1"></i> Return available on ' . htmlspecialchars($form["expected_return_date"]) . '
                                            </span>';
                     } else {
-                        // Ready for return submission (Borrowed, Overdue, or Reserved/Approved and due date reached/passed)
+                     
                         $overdue_warning = '';
                         if ($is_overdue) {
                             $overdue_warning = '<p class="text-danger fw-bold small mb-2"><i class="fas fa-exclamation-circle me-1"></i> LATE RETURN: This loan was marked overdue by staff. Submit now to finalize the return.</p>';
@@ -695,9 +677,7 @@ $today = date("Y-m-d");
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- GLOBAL HANDLERS (for notification dropdown logic) ---
-
-    // New API function to mark a single notification as read (Used by the hover button)
+  
     window.markSingleAlertAndGo = function(event, element, isHoverClick = false) {
         event.preventDefault();
         
@@ -713,7 +693,7 @@ $today = date("Y-m-d");
         }
 
         if (isRead === 0) {
-            // 1. Mark as read via API
+           
             $.post('../api/mark_notification_as_read.php', { notification_id: notifId }, function(response) {
                 if (response.success) {
                     if (!isHoverClick) {
@@ -728,12 +708,12 @@ $today = date("Y-m-d");
                 console.error("API call failed.");
             });
         } else if (isRead === 1 && !isHoverClick) {
-            // If already read, just navigate
+          
             window.location.href = linkHref;
         }
     }
     
-    // New API function to mark ALL notifications as read (Used by the Mark All button)
+    
     window.markAllAsRead = function() {
         $.post('../api/mark_notification_as_read.php', { mark_all: true }, function(response) {
             if (response.success) {
@@ -746,7 +726,7 @@ $today = date("Y-m-d");
         });
     };
     
-    // --- DROPDOWN PREVIEW LOGIC (Fetches alerts and populates the dropdown) ---
+   
     function fetchStudentAlerts() {
         const apiPath = '../api/get_notifications.php'; 
         
@@ -759,10 +739,10 @@ $today = date("Y-m-d");
             const $dropdown = $('#notification-dropdown');
             const $header = $dropdown.find('.dropdown-header');
             
-            // Find and detach the static View All link
+         
             const $viewAllLink = $dropdown.find('a[href="student_transaction.php"]').detach(); 
             
-            // Clear all previous dynamic content
+         
             $dropdown.children().not($header).not($viewAllLink).remove(); 
             
             // 1. Update the Badge Count
@@ -796,7 +776,7 @@ $today = date("Y-m-d");
                     }
                     
                     const is_read = notif.is_read == 1;
-                    const itemClass = is_read ? 'text-muted' : 'unread-item'; // Use unread-item class for styling
+                    const itemClass = is_read ? 'text-muted' : 'unread-item'; 
                     const link = notif.link || 'student_transaction.php';
                     
                     const cleanMessage = notif.message.replace(/\*\*/g, '');
@@ -824,16 +804,16 @@ $today = date("Y-m-d");
                      `);
                 });
             } else {
-                // Display a "No Alerts" message
+                
                 contentToInsert.push(`
                     <a class="dropdown-item text-center small text-muted dynamic-notif-item">No Recent Notifications</a>
                 `);
             }
             
-            // 3. Insert all dynamic content after the header
+           
             $header.after(contentToInsert.join(''));
             
-            // 4. Re-append the 'View All' link to the end of the dropdown
+            
             $dropdown.append($viewAllLink);
             
 
@@ -843,9 +823,9 @@ $today = date("Y-m-d");
         });
     }
 
-    // --- DOMContentLoaded Execution ---
+   
     document.addEventListener('DOMContentLoaded', () => {
-        // ... (Sidebar activation logic) ...
+    
         const path = window.location.pathname.split('/').pop() || 'student_dashboard.php';
         const links = document.querySelectorAll('.sidebar .nav-link');
         
@@ -859,13 +839,13 @@ $today = date("Y-m-d");
             }
         });
         
-        // Initial fetch on page load
+      
         fetchStudentAlerts();
         
-        // Refresh every 30 seconds
+      
         setInterval(fetchStudentAlerts, 30000); 
 
-        // --- Auto-hide message functionality ---
+      
         const messageAlert = document.getElementById('status-alert');
         
         if (messageAlert && messageAlert.classList.contains('alert-success')) {
@@ -875,7 +855,7 @@ $today = date("Y-m-d");
             }, 5000); 
         }
 
-        // New Mobile Toggle Logic
+      
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const mainWrapper = document.querySelector('.main-wrapper');
@@ -896,7 +876,7 @@ $today = date("Y-m-d");
                 if (window.innerWidth <= 992) {
                     if (sidebar.classList.contains('active')) {
                         document.body.style.overflow = 'hidden'; 
-                        // Delay binding to avoid immediate close on toggle click
+                      
                         setTimeout(() => {
                              mainWrapper.addEventListener('click', closeSidebar);
                              topHeaderBar.addEventListener('click', closeSidebar);
@@ -907,11 +887,11 @@ $today = date("Y-m-d");
                 }
             });
             
-            // Close sidebar when a nav item is clicked
+            
             const navLinks = sidebar.querySelectorAll('.nav-link');
             navLinks.forEach(link => {
                  link.addEventListener('click', () => {
-                     // Check if we are on a mobile view before closing
+                    
                      if (window.innerWidth <= 992) {
                           setTimeout(closeSidebar, 100);
                      }

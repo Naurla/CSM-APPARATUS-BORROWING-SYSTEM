@@ -9,17 +9,17 @@ if (!isset($_SESSION["user"]) || $_SESSION["user"]["role"] != "student") {
 }
 $transaction = new Transaction();
 $student_id = $_SESSION["user"]["id"];
-// --- BAN/LOCK STATUS CHECKS (used only for sidebar rendering) ---
+
 $isBanned = $transaction->isStudentBanned($student_id); 
 $activeCount = $transaction->getActiveTransactionCount($student_id);
-// --- FILTERING LOGIC ---
+-
 $filter = isset($_GET["filter"]) ? $_GET["filter"] : "all";
-// Fetch ALL student transactions for history view (targets borrow_forms)
+
 $transactions = $transaction->getStudentTransactions($student_id);
-// We rely on PHP's array filtering for simplicity, as in the original code.
+
 if ($filter != "all") {
     $filtered_transactions = array_filter($transactions, function($t) use ($filter) {
-        // Check for late return status separately if filter is 'returned_late'
+        
         if ($filter === 'returned_late' && strtolower($t["status"]) === 'returned' && ($t['is_late_return'] ?? 0) == 1) {
              return true;
         }
@@ -28,9 +28,9 @@ if ($filter != "all") {
 } else {
     $filtered_transactions = $transactions;
 }
-// Re-index array after filtering for use with foreach
+
 $filtered_transactions = array_values($filtered_transactions);
-// --- NEW FUNCTION: FLATTEN FORMS INTO ITEM-ROWS ---
+
 function getStudentDetailedItemRows(array $forms, $transaction) {
     $rows = [];
     foreach ($forms as $form) {
@@ -56,13 +56,13 @@ function getStudentDetailedItemRows(array $forms, $transaction) {
                  $display_status = 'returned (late)';
                  $status_class = 'returnedlate';
             }
-            // For overdue, just use the raw status but ensure the status tag styling works
+           
             if ($item_status === 'overdue') {
                  $status_class = 'overdue';
             }
             
             $rows[] = [
-                // Transaction-level details, repeated for every item row
+                
                 'form_id' => $form['id'],
                 'form_type' => ucfirst($form['form_type']),
                 'borrow_date' => $form['borrow_date'],
@@ -70,13 +70,13 @@ function getStudentDetailedItemRows(array $forms, $transaction) {
                 'actual_return_date' => $form['actual_return_date'] ?? '-',
                 'staff_remarks' => $form['staff_remarks'] ?? '-',
                 
-                // Item-level details
+               
                 'item_name' => htmlspecialchars($item['name'] ?? '-'),
                 'item_quantity' => $item['quantity'] ?? 1,
                 'item_status_display' => htmlspecialchars(ucwords($display_status)),
                 'item_status_class' => htmlspecialchars($status_class),
                 
-                // For CSS grouping
+                
                 'is_first_item' => ($index === 0) 
             ];
         }
@@ -95,25 +95,25 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
     <style>
-    /* Custom Variables and Base Layout (MSU Theme) */
+   
     :root {
-        --primary-color: #A40404; /* Dark Red / Maroon (WMSU-inspired) */
+        --primary-color: #A40404; 
         --primary-color-dark: #820303; 
-        --secondary-color: #f4b400; /* Gold/Yellow Accent */
+        --secondary-color: #f4b400; 
         --text-dark: #2c3e50;
         --sidebar-width: 280px; 
         --bg-light: #f5f6fa;
         --header-height: 60px; 
-        /* Status Colors */
+        
         --danger-color: #dc3545; 
         --warning-color: #ffc107;
         --success-color: #28a745; 
         --info-color: #0d6efd; 
-        /* Define solid colors for status tags */
+       
         --status-returned-solid: var(--success-color); 
         --status-overdue-solid: var(--danger-color); 
         --status-borrowed-solid: var(--info-color); 
-        --status-pending-solid: var(--warning-color); /* ADDED PENDING SOLID COLOR */
+        --status-pending-solid: var(--warning-color); 
         --status-rejected-solid: #6c757d; 
         --status-damaged-solid: var(--text-dark); 
     }
@@ -127,7 +127,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         font-size: 1.05rem;
         color: var(--text-dark);
     }
-    /* NEW CSS for Mobile Toggle */
+  
     .menu-toggle {
         display: none;
         position: fixed;
@@ -141,7 +141,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         border-radius: 6px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-    /* === TOP HEADER BAR STYLES === */
+   
     .top-header-bar {
         position: fixed;
         top: 0;
@@ -179,7 +179,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         color: var(--text-dark);
         font-weight: bold;
     }
-    /* FIX: Notification Dropdown size and spacing (Thin lines) */
+    
     .dropdown-menu { 
         min-width: 320px; 
         padding: 0; 
@@ -195,10 +195,10 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         margin-bottom: 0; 
     }
     .dropdown-item {
-        padding: 8px 15px; /* Tighter vertical padding */
+        padding: 8px 15px; 
         white-space: normal;
         transition: background-color 0.1s;
-        border-bottom: 1px dotted #eee; /* Separator for clean lines */
+        border-bottom: 1px dotted #eee; 
     }
     .dropdown-item:last-child {
         border-bottom: none;
@@ -207,7 +207,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         font-weight: 600; 
         background-color: #f8f8ff; 
     }
-    /* Mark All link styling */
+  
     .dropdown-item.mark-all-btn-wrapper {
         border-top: none; 
         border-bottom: 1px solid #ddd; 
@@ -222,8 +222,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
     }
     .mark-read-hover-btn { opacity: 0; }
     .dropdown-item:hover .mark-read-hover-btn { opacity: 1; }
-    /* === END TOP HEADER BAR STYLES === */
-    /* --- Sidebar Styles (Consistent Look) --- */
+   
     .sidebar { width: var(--sidebar-width); min-width: var(--sidebar-width); background-color: var(--primary-color); color: white; padding: 0; position: fixed; height: 100%; top: 0; left: 0; display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); z-index: 1050; }
     .sidebar-header { text-align: center; padding: 20px 15px; font-size: 1.2rem; font-weight: 700; line-height: 1.15; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.4); margin-bottom: 20px; }
     .sidebar-header img { width: 90px; height: 90px; object-fit: contain; margin: 0 auto 15px auto; display: block; }
@@ -244,7 +243,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         background: #fff;
         border-radius: 12px;
         padding: 40px 50px;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.1); /* Stronger shadow */
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1); 
         max-width: none;
         width: 95%;
         margin: 0 auto;
@@ -260,7 +259,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         margin-bottom: 30px; 
         color: #555;
     }
-    /* --- Filter Styles --- */
+   
     .filter {
         margin-bottom: 25px;
     }
@@ -275,10 +274,10 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         border-color: var(--secondary-color);
         box-shadow: 0 0 0 3px rgba(244, 180, 0, 0.2);
     }
-    /* --- Table Redesign Styles --- */
+  
     .table-responsive {
         border-radius: 10px;
-        overflow-x: auto; /* Ensure horizontal scroll on overflow */
+        overflow-x: auto;
         border: 1px solid #e0e0e0;
         margin-top: 20px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.05);
@@ -289,7 +288,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         font-size: 1.05rem;
         min-width: 950px;
     }
-    /* Table Header */
+    
     .table thead th { 
         background: #e9ecef !important; 
         color: var(--text-dark); 
@@ -298,40 +297,40 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         vertical-align: middle;
         font-size: 1rem;
         padding: 15px 15px;
-        text-align: center; /* Ensure header alignment is center */
+        text-align: center; 
     }
-    /* Table Body */
+   
     .table td {
         padding: 18px 15px;
         border-top: 1px solid #e9ecef;
         vertical-align: middle;
         font-size: 1rem;
-        text-align: center; /* Default cell alignment */
+        text-align: center; 
     }
-    /* FIX 1: Explicitly align content that should be left-aligned */
-    .table thead th:nth-child(2), /* Item Borrowed Header */
+  
+    .table thead th:nth-child(2), 
     .item-borrowed {
         text-align: left !important;
     }
-    .table thead th:nth-child(7), /* Remarks Header (Desktop/Tablet view) */
+    .table thead th:nth-child(7), 
     .remarks-col {
         text-align: left !important;
     }
-    /* --- CUSTOM ROW GROUPING (Screen View Only) --- */
+   
     .table tbody tr.first-item-of-group td {
         border-top: 2px solid #ccc !important;
     }
     .table tbody tr:first-child.first-item-of-group td {
         border-top: 1px solid #e9ecef !important;
     }
-    /* Row Highlight for Critical Statuses */
+   
     .status-danger-row {
         background-color: #fff0f0 !important;
     }
     .table-striped > tbody > .status-danger-row:nth-of-type(odd) > * {
         background-color: #fae0e0 !important;
     }
-    /* Status Tags */
+  
     .status {
         display: inline-block;
         padding: 8px 15px;
@@ -344,10 +343,10 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
         text-align: center;
         color: white;
     }
-    /* --- STATUS STYLES (FIXED: Added .pending class) --- */
+   
     .status.pending, .status.waitingforapproval, .status.checking, .status.reserved { 
-        background-color: var(--status-pending-solid); /* Yellow */
-        color: var(--text-dark); /* Dark text for contrast */
+        background-color: var(--status-pending-solid); 
+        color: var(--text-dark);
     } 
     .status.approved { background-color: var(--info-color); }
     .status.rejected { background-color: var(--status-rejected-solid); }
@@ -355,8 +354,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
     .status.returned { background-color: var(--status-returned-solid); }
     .status.overdue, .status.returnedlate { background-color: var(--status-overdue-solid); color: white; }
     .status.damaged { background-color: var(--status-damaged-solid); color: white; }
-    /* --- COLUMN STYLING --- */
-    /* Ensure only ID/Type is centered for better mobile presentation */
+  
     .form-details {
         text-align: center !important;
         font-weight: 700;
@@ -377,20 +375,20 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
     .date-col .expected { color: var(--danger-color); font-weight: 600; }
     .date-col .actual { color: var(--status-returned-solid); font-weight: 600; }
     .date-col .borrow { color: #333; font-weight: 500;}
-    /* --- RESPONSIVE ADJUSTMENTS --- */
+   
     @media (max-width: 992px) {
         .menu-toggle { display: block; }
         .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; }
         .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
         .main-wrapper { margin-left: 0; padding-left: 15px; padding-right: 15px; }
         .top-header-bar { left: 0; padding-left: 70px; }
-        /* Hide Remarks column for smaller desktop/tablet */
+      
         .table thead th:nth-child(7), 
         .table tbody td:nth-child(7) { display: none; }
         .container { padding: 25px; }
     }
     @media (max-width: 768px) {
-        /* Mobile View: Card View structure */
+      
         .table-responsive { border: none; box-shadow: none; }
         .table { min-width: 100%; border: none; }
         .table thead { display: none; }
@@ -412,7 +410,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
             padding: 10px 15px !important;
         }
         .table td:last-child { border-bottom: none; }
-        /* Mobile Label */
+       
         .table td::before {
             content: attr(data-label);
             position: absolute;
@@ -426,8 +424,8 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
             display: flex;
             align-items: center;
         }
-        /* Mobile Specific Card Formatting */
-        .table tbody tr td:nth-child(1) { /* Form ID/Type - Header block */
+       
+        .table tbody tr td:nth-child(1) { 
             background-color: #f8f8f8;
             border-bottom: 1px solid #ddd;
             text-align: left !important;
@@ -438,7 +436,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
             color: var(--text-dark);
             width: auto;
         }
-        .table tbody tr td:nth-child(2) { /* Item Borrowed - Primary row data */
+        .table tbody tr td:nth-child(2) { 
             text-align: left !important;
             font-size: 1.1rem;
             font-weight: 700;
@@ -598,8 +596,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- DROPDOWN NOTIFICATION LOGIC ---
-    // New API function to mark a single notification as read (Used by the hover button)
+    
     window.markSingleAlertAndGo = function(event, element, isHoverClick = false) {
         event.preventDefault();
         const $element = $(element);
@@ -628,7 +625,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
             window.location.href = linkHref;
         }
     }
-    // New API function to mark ALL notifications as read (Used by the Mark All button)
+    
     window.markAllAsRead = function() {
         $.post('../api/mark_notification_as_read.php', { mark_all: true }, function(response) {
             if (response.success) {
@@ -640,7 +637,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
             console.error("API call failed.");
         });
     };
-    // --- DROPDOWN PREVIEW LOGIC (Fetches alerts and populates the dropdown) ---
+    
     function fetchStudentAlerts() {
         const apiPath = '../api/get_notifications.php'; 
         $.getJSON(apiPath, function(response) { 
@@ -649,7 +646,7 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
             const $badge = $('#notification-bell-badge');
             const $dropdown = $('#notification-dropdown');
             const $header = $dropdown.find('.dropdown-header');
-            // Detach the 'View All' link to re-append it at the end
+            
             const $viewAllLink = $dropdown.find('a[href="student_transaction.php"]').detach(); 
             // Clear previous dynamic content
             $dropdown.children().not($header).not($viewAllLink).remove(); 
@@ -704,38 +701,38 @@ $detailedItemRows = getStudentDetailedItemRows($filtered_transactions, $transact
                     `);
                 });
             } else {
-                // Display a "No Alerts" message
+               
                 contentToInsert.push(`
                     <a class="dropdown-item text-center small text-muted dynamic-notif-item">No Recent Notifications</a>
                 `);
             }
-            // 3. Insert all dynamic content after the header
+            
             $header.after(contentToInsert.join(''));
-            // 4. Re-append the 'View All' link to the end of the dropdown
+            
             $dropdown.append($viewAllLink);
         }).fail(function(jqXHR, textStatus, errorThrown) {
             console.error("Error fetching student alerts:", textStatus, errorThrown);
             $('#notification-bell-badge').text('0').hide();
         });
     }
-    // --- DOMContentLoaded Execution (Initialization) ---
+ 
     document.addEventListener('DOMContentLoaded', () => {
-        // 1. Sidebar activation logic
+       
         const path = window.location.pathname.split('/').pop() || 'student_dashboard.php';
         const links = document.querySelectorAll('.sidebar .nav-link');
         links.forEach(link => {
             const linkPath = link.getAttribute('href').split('/').pop();
-            // This ensures the link is active based on the current file name
+          
             if (linkPath === path) {
                 link.classList.add('active');
             } else {
                 link.classList.remove('active');
             }
         });
-        // 2. Notification Logic Setup
-        fetchStudentAlerts(); // Initial fetch on page load
-        setInterval(fetchStudentAlerts, 30000); // Poll the server every 30 seconds
-        // 3. Mobile Toggle Logic
+        
+        fetchStudentAlerts(); 
+        setInterval(fetchStudentAlerts, 30000); 
+       
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const mainWrapper = document.querySelector('.main-wrapper');

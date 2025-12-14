@@ -18,14 +18,12 @@ $student_id = $_SESSION["user"]["id"];
 $student_db = new Student();
 $db_conn = $student_db->connect();
 
-// --- BAN/LOCK LOGIC ---
+
 $isBanned = $transaction->isStudentBanned($student_id);
 $activeCount = $transaction->getActiveTransactionCount($student_id);
 $hasOverdueLock = $transaction->hasOverdueLoansPendingReturn($student_id);
 $is_locked = ($activeCount >= 3 || $isBanned || $hasOverdueLock);
-// --- END LOCK LOGIC ---
 
-// --- STICKINESS LOGIC: Check POST first, then GET ---
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $type = $_POST["type"] ?? '';
     $borrow_date = $_POST["borrow_date"] ?? '';
@@ -39,9 +37,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $agreed_terms = filter_var($_GET["agree_terms"] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
     $request_array_json = $_GET['request_array_json'] ?? '[]';
 }
-// --- END STICKINESS LOGIC ---
 
-// --- SEARCH & FILTER PARAMETERS ---
 $search_term = $_GET['s'] ?? '';
 $filter_type = $_GET['filter_type'] ?? '';
 
@@ -56,13 +52,11 @@ $totalPages = ceil($totalItems / $itemsPerPage);
 $offset = ($currentPage - 1) * $itemsPerPage;
 $available_apparatus = array_slice($all_apparatus, $offset, $itemsPerPage);
 
-// Build BASE parameters
 $base_params = http_build_query(array_filter([
     's' => $search_term,
     'filter_type' => $filter_type
 ]));
 
-// Build STICKY parameters
 $sticky_params = http_build_query(array_filter([
     'type' => $type,
     'borrow_date' => $borrow_date,
@@ -72,13 +66,12 @@ $sticky_params = http_build_query(array_filter([
     's' => $search_term,
     'filter_type' => $filter_type
 ]));
-// ------------------------------------
+
 
 $errors = [];
 $message = "";
 $is_success = false;
 
-// Determine the specific error message for rendering if locked
 $lock_message = "";
 
 if ($hasOverdueLock) {
@@ -92,7 +85,6 @@ if ($hasOverdueLock) {
     $lock_message = "🚫 Max Active Requests Reached: You already have {$activeCount} active transactions (Limit is 3). Please return or wait for completion before borrowing again.";
 }
 
-// --- FINAL MESSAGE RESOLUTION (Handles modal display on page load) ---
 $secondary_message = "";
 
 if (isset($_SESSION['submission_status'])) {
@@ -100,19 +92,17 @@ if (isset($_SESSION['submission_status'])) {
     $is_success = $_SESSION['submission_status']['success'];
     $secondary_message = $_SESSION['submission_status']['secondary_message'] ?? '';
 
-    // Clear the session variable after loading it
     unset($_SESSION['submission_status']);
 
 } elseif ($is_locked) {
     $message = $lock_message;
     $is_success = false;
 }
-// ------------------------------------
+
 
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
-    // 1. CRITICAL: Re-check Lock State on POST (Server-side defense)
     if ($is_locked) {
         $_SESSION['submission_status'] = [
             'message' => $lock_message,
@@ -122,7 +112,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
 
-    // --- START VALIDATION ---
     $apparatus_details_for_transaction = json_decode(urldecode($request_array_json), true);
 
     if (empty($type)) {
@@ -162,24 +151,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $errors['borrow_date'] = "Invalid date format submitted.";
         }
     }
-    // --- END VALIDATION ---
 
 
     if (empty($errors)) {
-
-        // FIX: createTransaction must return the new form ID for the notification trigger
-        // The email is sent from inside this method now.
         $result = $transaction->createTransaction($student_id, $type, $apparatus_details_for_transaction, $borrow_date, $expected_return_date, $agreed_terms);
 
-        if (is_numeric($result)) { // SUCCESS!
+        if (is_numeric($result)) { 
 
             $new_borrow_form_id = (int)$result;
-
-            // --------------------------------------------------------------------------------
-            // 🛑 REMOVED DUPLICATE EMAIL LOGIC HERE TO FIX DOUBLE SENDING.
-            //     The submission email is now sent exclusively from
-            //     classes/Transaction.php::createTransaction().
-            // --------------------------------------------------------------------------------
 
             $newActiveCount = $transaction->getActiveTransactionCount($student_id);
             $final_secondary_message = '';
@@ -189,7 +168,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             $_SESSION['submission_status'] = [
-                // Clean message, relying on Transaction.php for email confirmation
                 'message' => "Successfully submitted your request! It is now awaiting staff approval. A confirmation email has been sent.",
                 'success' => true,
                 'secondary_message' => $final_secondary_message
@@ -244,11 +222,10 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <style>
-    /* --- THEME MATCHING (Consistent Theme) --- */
     :root {
-        --primary-color: #A40404; /* Dark Red / Maroon (WMSU-inspired) */
+        --primary-color: #A40404; 
         --primary-color-dark: #820303; 
-        --secondary-color: #f4b400; /* Gold/Yellow Accent */
+        --secondary-color: #f4b400; 
         --text-dark: #2c3e50;
         --sidebar-width: 280px;
         --bg-light: #f5f6fa;
@@ -268,9 +245,8 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         font-size: 1.05rem;
     }
     
-    /* NEW CSS for Mobile Toggle */
     .menu-toggle {
-        display: none; /* Hidden on desktop */
+        display: none;
         position: fixed;
         top: 15px;
         left: 20px;
@@ -284,7 +260,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 
-    /* --- Top Header Bar Styles --- */
     .top-header-bar {
         position: fixed;
         top: 0;
@@ -307,7 +282,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         text-decoration: none;
         transition: color 0.2s;
     }
-    .edit-profile-link.active { /* Highlight current page link */
+    .edit-profile-link.active { 
         border-bottom: 3px solid var(--primary-color);
         padding-bottom: 3px;
     }
@@ -327,16 +302,13 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         color: var(--text-dark);
         font-weight: bold;
     }
-    /* Notification Dropdown Styling (Simplified for consistency) */
     .dropdown-menu { min-width: 300px; padding: 0; }
     .dropdown-item { padding: 10px 15px; white-space: normal; position: relative; }
     .dropdown-item.unread-item { font-weight: 600; background-color: #f8f8ff; }
     .dropdown-item small { display: block; font-size: 0.8em; color: #999; }
     .mark-read-hover-btn { color: #6c757d; opacity: 0; transition: opacity 0.2s; }
     .dropdown-item:hover .mark-read-hover-btn { opacity: 1; }
-    /* --- END Top Header Bar Styles --- */
 
-    /* Standard Sidebar Styles */
     .sidebar { width: var(--sidebar-width); min-width: var(--sidebar-width); background-color: var(--primary-color); color: white; padding: 0; position: fixed; height: 100%; top: 0; left: 0; display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); z-index: 1050; transition: left 0.3s ease; }
     .sidebar-header {
         text-align: center;
@@ -370,7 +342,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
     .logout-link .nav-link { background-color: #C62828 !important; color: white !important; }
     .logout-link .nav-link:hover { background-color: var(--primary-color-dark) !important; }
 
-    /* MODIFIED: Added padding-top for fixed header */
     .main-wrapper {
         margin-left: var(--sidebar-width);
         padding: 25px;
@@ -379,7 +350,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         transition: margin-left 0.3s ease;
     }
 
-    /* INCREASED CONTAINER PADDING */
     .container {
         max-width: none;
         width: 95%;
@@ -390,7 +360,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         box-shadow: 0 5px 20px rgba(0,0,0,0.1);
     }
 
-    /* INCREASED MAIN HEADER SIZE */
     h2 { 
         text-align: left; 
         margin-bottom: 30px; 
@@ -414,14 +383,11 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
     }
     .disabled, button[disabled] { background-color: #aaa !important; cursor: not-allowed !important; }
 
-    /* --- UI STYLES --- */
-    
-    /* Request List Items (Cart) - Modified for better visual list */
     .request-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background-color: #fff3cd; /* Light warning color to highlight the 'cart' */
+        background-color: #fff3cd; 
         padding: 10px 15px;
         border-radius: 6px;
         margin-bottom: 8px;
@@ -503,7 +469,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         font-size: 1.05rem;
         height: 40px;
         text-align: center;
-        padding: 0.375rem 0.5rem; /* Adjusted padding */
+        padding: 0.375rem 0.5rem; 
     }
     .qty-input:focus {
         border-color: var(--secondary-color);
@@ -521,13 +487,12 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         border: none;
     }
     .btn-add-request:hover {
-        background-color: #e0a800; /* slightly darker yellow */
+        background-color: #e0a800;
         transform: translateY(-1px);
     }
     .out-of-stock-card { opacity: 0.7; background-color: #fdf6f6; }
     .out-of-stock-card .btn-add-request { background-color: #aaa; cursor: not-allowed; }
 
-    /* VISUAL TYPE SELECTION STYLES */
     .type-selection { display: flex; gap: 15px; margin-bottom: 15px; }
     .type-btn {
         padding: 12px 20px;
@@ -553,12 +518,12 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         border-color: var(--secondary-color);
     }
     
-    /* SUBMIT BUTTON - New Primary Style (Pill shape) */
+   
     .btn-submit {
         background-color: var(--primary-color);
         color: white;
         border: none;
-        border-radius: 50px; /* Pill shape */
+        border-radius: 50px; 
         padding: 12px 30px;
         font-weight: 700;
         font-size: 1.1rem;
@@ -580,7 +545,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         box-shadow: none;
     }
 
-    /* MODAL STYLING */
     #statusModalHeader.success {
         background-color: #28a745;
         color: white;
@@ -598,10 +562,9 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         color: white;
     }
 
-    /* --- PAGINATION STYLES --- */
     .pagination-info {
         font-size: 0.9rem;
-        color: #6c757d; /* Dark gray for info text */
+        color: #6c757d; 
         font-weight: 500;
     }
     .pagination-info strong {
@@ -609,7 +572,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         color: #343a40;
     }
     .page-item .page-link {
-        color: var(--primary-color); /* Link color */
+        color: var(--primary-color);
     }
     .page-item.active .page-link {
         background-color: var(--primary-color);
@@ -622,12 +585,8 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
     .page-item:not(.disabled) .page-link:hover {
         background-color: #f8f8f8;
     }
-    /* --- END PAGINATION STYLES --- */
 
-
-    /* --- RESPONSIVE ADJUSTMENTS --- */
     @media (max-width: 992px) {
-        /* Mobile Sidebar Toggle */
         .menu-toggle { display: block; }
         .sidebar { left: calc(var(--sidebar-width) * -1); transition: left 0.3s ease; box-shadow: none; --sidebar-width: 250px; }
         .sidebar.active { left: 0; box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2); }
@@ -636,7 +595,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
     }
 
     @media (max-width: 768px) {
-        /* Request Form Adjustments (Type Selection & Dates) */
         .type-selection {
             flex-direction: column; 
             gap: 10px;
@@ -644,7 +602,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         .row > .col-md-4 {
             margin-bottom: 15px !important;
         }
-        /* Filter/Search stacking */
         .filter-container .row > div {
             width: 100% !important;
             margin-bottom: 10px;
@@ -653,7 +610,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
             margin-bottom: 0;
         }
         
-        /* Apparatus Card Action Area Stacking */
         .apparatus-card .action-area {
             flex-direction: column;
             align-items: flex-start;
@@ -666,21 +622,19 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
             width: 60px;
         }
         .apparatus-card .btn-add-request {
-            flex-grow: 1; /* Make button fill horizontal space */
+            flex-grow: 1;
             width: 100%;
             text-align: center;
         }
         .apparatus-card .action-area > div:last-child {
             width: 100%;
         }
-        /* Ensure quantity input is inline with button on mobile */
         .apparatus-card .action-area > div:last-child .d-flex {
             width: 100%;
         }
     }
 
     @media (max-width: 576px) {
-        /* Adjust header spacing on smallest screens */
         .top-header-bar {
             padding: 0 15px;
             justify-content: flex-end;
@@ -692,7 +646,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         .container {
              padding: 20px;
         }
-        /* Make filter inputs small */
+        
         .filter-container .row > div:nth-child(3) {
             margin-bottom: 15px; 
         }
@@ -782,7 +736,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         <h2 class="mb-4"><i class="fas fa-plus-circle me-3 text-secondary"></i> Borrow or Reserve Apparatus</h2>
 
         <?php
-        // --- MODAL TRIGGER LOGIC (PRIMARY MODAL) ---
+        
         if (!empty($message)) {
             $modal_status = ($is_success) ? 'success' : 'error';
             echo '<input type="hidden" id="modalMessage" value="' . htmlspecialchars($message) . '">';
@@ -791,7 +745,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                 echo '<input type="hidden" id="modalSecondaryMessage" value="' . htmlspecialchars($secondary_message) . '">';
             }
         }
-        // --- END MODAL TRIGGER LOGIC ---
+        
         ?>
 
         <div class="card mb-5 border-0 shadow">
@@ -936,8 +890,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                     $input_disabled = ($is_locked || $is_out_of_stock) ? "disabled" : "";
 
                     $imageFile = "../uploads/apparatus_images/" . ($app['image'] ?? 'default.jpg');
-                    // NOTE: The file_exists check here is not executable, but the variable is set based on the original PHP logic.
-                    // We maintain the original image path logic.
+                   
                 ?>
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="apparatus-card <?= $card_class ?>">
@@ -999,7 +952,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                         </a>
                     </li>
                     <?php
-                    // Logic to display a reasonable range of page numbers
                     $start_page = max(1, $currentPage - 1);
                     $end_page = min($totalPages, $currentPage + 1);
 
@@ -1154,20 +1106,19 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Global variable to hold the requested items (The "Cart")
     let requestArray = [];
     const typeErrorModal = new bootstrap.Modal(document.getElementById('typeErrorModal'));
     const qtyErrorModal = new bootstrap.Modal(document.getElementById('qtyErrorModal'));
 
-    // Get the DOM elements for the Bootstrap modals
+    
     const statusModalElement = document.getElementById('statusModal');
     const statusModal = new bootstrap.Modal(statusModalElement);
 
-    // NEW MODAL FOR WARNING CHAIN
+    
     const lockWarningModalElement = document.getElementById('lockWarningModal');
     const lockWarningModal = new bootstrap.Modal(document.getElementById('lockWarningModal'));
 
-    // --- JAVASCRIPT FOR AUTO-CALCULATION (No Overnight Rule) ---
+    
     function updateExpectedReturnDate() {
         const borrowDateInput = document.getElementById('borrow_date');
         const expectedReturnDisplay = document.getElementById('expected_return_date_display');
@@ -1175,58 +1126,50 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
 
         const borrowDateStr = borrowDateInput.value;
 
-        // 1. Clear fields if prerequisites are missing
         if (!borrowDateStr) {
             expectedReturnDisplay.value = '';
             expectedReturnHidden.value = '';
         } else {
-            // Reformat YYYY-MM-DD input for MM/DD/YYYY display
+           
             let displayDateStr = borrowDateStr;
             try {
                 const dateParts = borrowDateStr.split('-');
                 if (dateParts.length === 3) {
-                    // Display in MM/DD/YYYY format for user clarity, although the hidden field remains YYYY-MM-DD
+                    
                     displayDateStr = `${dateParts[1]}/${dateParts[2]}/${dateParts[0]}`;
                 }
             } catch (e) {
-                // Use raw string if formatting fails
+                
             }
 
-            // 2. Set Return Date = Borrow Date (No Overnight Rule)
-            expectedReturnDisplay.value = displayDateStr; // Display format for user
-            expectedReturnHidden.value = borrowDateStr; // Keep YYYY-MM-DD for PHP validation/database
+           
+            expectedReturnDisplay.value = displayDateStr; 
+            expectedReturnHidden.value = borrowDateStr; 
         }
 
-        // Crucial: Update the sticky hidden input in the filter form for date
+        
         document.getElementById('filter_borrow_date_sticky').value = borrowDateStr;
         document.getElementById('filter_expected_return_date_sticky').value = borrowDateStr;
         
-        // Update submit button state after date/type change
+       
         updateRequestDisplay();
     }
 
-    // --- Function to handle visual selection and update hidden field (Sticky Fix) ---
+    
     window.toggleType = function(typeValue) {
         const typeHiddenInput = document.getElementById('type_hidden');
         const filterTypeHiddenInput = document.getElementById('filter_type_sticky');
         const buttons = document.querySelectorAll('.type-btn');
         const borrowDateInput = document.getElementById('borrow_date');
 
-        // Capture current date for re-stickiness
         const currentBorrowDate = borrowDateInput.value;
 
-
-        // Toggle logic
         if (typeHiddenInput.value === typeValue) {
-            // If currently selected, unselect it
             typeHiddenInput.value = '';
             filterTypeHiddenInput.value = '';
             buttons.forEach(btn => btn.classList.remove('selected'));
-            
-            // Do NOT clear the date input here, as requested
-            // borrowDateInput.value = ''; 
+             
         } else {
-            // If unselected or different, set the new value
             buttons.forEach(btn => {
                 if (btn.getAttribute('data-value') === typeValue) {
                     btn.classList.add('selected');
@@ -1236,26 +1179,17 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
             });
             typeHiddenInput.value = typeValue;
             filterTypeHiddenInput.value = typeValue;
-            
-            // RETAIN the current date in the input field, even if it's invalid for the new type.
-            // Validation on submission will handle correctness.
-            // Note: If the field was empty, it remains empty. If it had a value (sticky or manual), it keeps it.
-            // If the user selects 'Borrow', the date must be today's date for validation to pass on the server.
-            // If the user selects 'Reserve', the date must be future (up to 3 days) for validation to pass on the server.
-            // We removed the line that clears the date: borrowDateInput.value = ''; 
         }
 
         updateExpectedReturnDate();
     }
 
-    // --- Function to open the terms modal ---
     window.openTermsModal = function(event) {
         event.preventDefault();
         const termsModal = new bootstrap.Modal(document.getElementById('termsModal'));
         termsModal.show();
     }
 
-    // --- REQUEST ARRAY (CART) MANAGEMENT (Using Modals) ---
 
     window.addToRequest = function(button) {
         const input = button.previousElementSibling;
@@ -1267,10 +1201,8 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         const borrowDate = document.getElementById('borrow_date').value;
         const qtyErrorBody = document.getElementById('qtyErrorModalBody');
 
-        // This check remains: The button is disabled by PHP/JS if the whole borrowing mechanism is locked.
         const submitButton = document.getElementById('submitButton');
         if (submitButton.disabled && submitButton.getAttribute('data-is-locked') === 'true') {
-            // We show the warning modal if they try to add while locked
             document.getElementById('lockWarningModalBody').innerHTML = submitButton.getAttribute('data-lock-reason').replace(/\*\*/g, '<strong>');
             lockWarningModal.show();
             return;
@@ -1311,19 +1243,18 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         updateRequestDisplay();
     }
 
-    // CRITICAL FIX: Initializes JS array from PHP/Hidden Input on page load
     function loadRequestArrayFromHidden() {
         const hiddenInput = document.getElementById('request_array_json');
         let jsonString = hiddenInput.value;
 
         if (jsonString) {
-            // Decode the URL encoding first, then parse the JSON string
+            
             try {
                 const decodedString = decodeURIComponent(jsonString);
                 requestArray = JSON.parse(decodedString);
             } catch (e) {
                 console.error("Error loading request array from hidden input:", e);
-                requestArray = []; // Fallback to empty array
+                requestArray = [];
             }
         } else {
             requestArray = [];
@@ -1347,7 +1278,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         if (requestArray.length === 0) {
             displayDiv.innerHTML = '<p class="text-muted small mb-0">No items added to the request yet.</p>';
             hiddenInput.value = '[]';
-            filterHiddenInput.value = '[]'; // Update filter sticky value
+            filterHiddenInput.value = '[]'; 
             requestCountSpan.textContent = '0';
         } else {
             let totalQty = 0;
@@ -1364,16 +1295,12 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                 totalQty += item.quantity;
             });
             const jsonString = encodeURIComponent(JSON.stringify(requestArray));
-            hiddenInput.value = jsonString; // For form submission
-            filterHiddenInput.value = jsonString; // For navigation stickiness
+            hiddenInput.value = jsonString; 
+            filterHiddenInput.value = jsonString; 
             requestCountSpan.textContent = totalQty;
         }
 
-        // --- SUBMIT BUTTON STATE LOGIC (MODIFIED) ---
         const isLockedByPHP = submitButton.getAttribute('data-is-locked') === 'true';
-        // Removed client-side form completion checks like termsAgreed, hasItems, and formFieldsComplete.
-        
-        // The button should ONLY be disabled if the user is locked by PHP.
         let shouldBeDisabled = isLockedByPHP;
 
         submitButton.disabled = shouldBeDisabled;
@@ -1382,11 +1309,9 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         } else {
              submitButton.classList.remove('disabled');
         }
-        // --- END SUBMIT BUTTON STATE LOGIC ---
+       
     }
-    // -------------------------------------------------------------
 
-    // --- NAVIGATION FIX (Most Robust Method) ---
     window.manualPagination = function(event, targetPage) {
         event.preventDefault();
         const type = document.getElementById('filter_type_sticky').value;
@@ -1412,11 +1337,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         const queryString = new URLSearchParams(cleanedParams).toString();
         window.location.href = 'student_borrow.php?' + queryString;
     }
-    // ----------------------
-
-    // --- DROPDOWN NOTIFICATION LOGIC (Restored) ---
-
-    // New API function to mark a single notification as read (Used by the hover button)
+ 
     window.markSingleAlertAndGo = function(event, element, isHoverClick = false) {
         event.preventDefault();
 
@@ -1450,7 +1371,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         }
     }
 
-    // New API function to mark ALL notifications as read (Used by the Mark All button)
+   
     window.markAllAsRead = function() {
         $.post('../api/mark_notification_as_read.php', { mark_all: true }, function(response) {
             if (response.success) {
@@ -1463,7 +1384,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         });
     };
 
-    // --- DROPDOWN PREVIEW LOGIC (Fetches alerts and populates the dropdown) ---
     function fetchStudentAlerts() {
         const apiPath = '../api/get_notifications.php';
 
@@ -1476,16 +1396,13 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
             const $dropdown = $('#notification-dropdown');
             const $viewAllLink = $dropdown.find('a[href="student_transaction.php"]').detach();
 
-            // 1. Update the Badge Count
             $badge.text(unreadCount);
             $badge.toggle(unreadCount > 0);
 
-            // 2. Clear previous dynamic items
             const $placeholder = $dropdown.find('.dynamic-notif-placeholder').empty();
             $dropdown.find('.mark-all-btn-wrapper').remove();
 
             if (notifications.length > 0) {
-                // Add a Mark All button if there are unread items
                 if (unreadCount > 0) {
                      $placeholder.append(`
                              <a class="dropdown-item text-center small text-muted dynamic-notif-item mark-all-btn-wrapper" href="#" onclick="event.preventDefault(); window.markAllAsRead();">
@@ -1513,7 +1430,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                     const datePart = new Date(notif.created_at.split(' ')[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 
-                    // Insert the item into the placeholder div
                     $placeholder.append(`
                              <a class="dropdown-item d-flex align-items-center dynamic-notif-item ${itemClass}"
                                  href="${link}"
@@ -1536,13 +1452,11 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                      `);
                 });
             } else {
-                // Display a "No Alerts" message
                 $placeholder.html(`
                     <a class="dropdown-item text-center small text-muted dynamic-notif-item">No Recent Notifications</a>
                 `);
             }
 
-            // Re-append the 'View All' link to the end of the dropdown
             $dropdown.append($viewAllLink);
 
 
@@ -1553,26 +1467,19 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
     }
 
 
-    // --- DOMContentLoaded Execution (Initialization) ---
     document.addEventListener('DOMContentLoaded', () => {
 
         const borrowDateInput = document.getElementById('borrow_date');
         borrowDateInput.addEventListener('change', updateExpectedReturnDate);
         
-        // Add listener for terms agreement to enable/disable submit button
         document.getElementById('agree_terms').addEventListener('change', updateRequestDisplay);
         
-        // Add listener for borrow date input to enable/disable submit button
         document.getElementById('borrow_date').addEventListener('change', updateRequestDisplay);
 
-
-        // CRITICAL FIX 1A: Ensure the expected return date is calculated/displayed on load
         updateExpectedReturnDate();
 
-        // CRITICAL FIX 2A: Load the request array from the hidden input on page load and display it
         loadRequestArrayFromHidden();
 
-        // --- SUBMISSION MODAL LOGIC (SUCCESS/ERROR) ---
         const modalMessage = document.getElementById('modalMessage');
         if (modalMessage) {
             const message = modalMessage.value;
@@ -1601,7 +1508,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
             statusModal.show();
         }
 
-        // --- LOCK WARNING MODAL (ON LOAD) ---
         const submitButton = document.getElementById('submitButton');
         if (submitButton && submitButton.getAttribute('data-is-locked') === 'true') {
             const lockReason = submitButton.getAttribute('data-lock-reason');
@@ -1610,11 +1516,11 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
         }
 
 
-        // --- NOTIFICATION EXECUTION ---
-        fetchStudentAlerts(); // Initial fetch on page load
-        setInterval(fetchStudentAlerts, 30000); // Poll the server every 30 seconds
+      
+        fetchStudentAlerts(); 
+        setInterval(fetchStudentAlerts, 30000); 
 
-        // SCROLL LOGIC (remains unchanged)
+     
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('scroll_to_apparatus') === 'true') {
             const apparatusSection = document.getElementById('available-apparatus-section');
@@ -1626,7 +1532,7 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
             }
         }
         
-        // New Mobile Toggle Logic
+        
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const mainWrapper = document.querySelector('.main-wrapper');
@@ -1649,7 +1555,6 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                 }
             });
             
-            // Function to close the sidebar only once after clicking outside
             function closeSidebarOnce() {
                  sidebar.classList.remove('active');
                  document.body.style.overflow = 'auto'; 
@@ -1657,16 +1562,16 @@ $activeCount = $transaction->getActiveTransactionCount($student_id);
                  topHeaderBar.removeEventListener('click', closeSidebarOnce); 
             }
             
-            // Close sidebar when a nav item is clicked
+           
             const navLinks = sidebar.querySelectorAll('.nav-link');
             navLinks.forEach(link => {
                  link.addEventListener('click', () => {
-                     // Check if we are on a mobile view before closing
+                     
                      if (window.innerWidth <= 992) {
                          setTimeout(() => {
                              sidebar.classList.remove('active');
                              document.body.style.overflow = 'auto';
-                         }, 100); // Small delay to allow navigation
+                         }, 100); 
                      }
                  });
             });
