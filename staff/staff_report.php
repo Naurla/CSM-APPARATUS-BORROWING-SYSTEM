@@ -1055,7 +1055,7 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             // 4. Insert all dynamic content (Mark All + notifications) after the header
             $header.after(contentToInsert.join(''));
             
-            // 5. Re-append the 'View All' link to the end of the dropdown
+            
             $dropdown.append($viewAllLink);
             
         }).fail(function(jqXHR, textStatus, errorThrown) {
@@ -1063,15 +1063,13 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             $('#notification-bell-badge').text('0').hide();
         });
     }
-    // --- END JAVASCRIPT FOR STAFF NOTIFICATION LOGIC ---
 
-    // Function to set the max attribute of a date input to today's date
     function setMaxDateToToday(elementId) {
         const today = new Date();
         const year = today.getFullYear();
-        // Month is 0-indexed, so add 1, and pad with 0
+
         const month = String(today.getMonth() + 1).padStart(2, '0'); 
-        // Day of the month, padded with 0
+
         const day = String(today.getDate()).padStart(2, '0');
         
         const maxDate = `${year}-${month}-${day}`;
@@ -1082,17 +1080,13 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
         }
     }
 
-    // --- NEW JAVASCRIPT FOR APPARATUS MULTI-SELECT ---
-    
-    // Function to update the hidden input and re-render tags
     function updateApparatusSelection() {
         const tagsContainer = document.getElementById('selected_apparatus_tags');
         const searchInput = document.getElementById('apparatus_search_input');
         
-        // Find and remove all existing hidden inputs that carry the form data
         document.querySelectorAll('input[name="apparatus_ids[]"]').forEach(input => input.remove());
         
-        tagsContainer.innerHTML = ''; // Clear visual tags
+        tagsContainer.innerHTML = ''; 
         const selectedItems = [];
 
         document.querySelectorAll('.multi-select-item').forEach(item => {
@@ -1101,22 +1095,21 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
                 const name = item.getAttribute('data-name');
                 selectedItems.push(id);
 
-                // Create and append the new tag
+               
                 const tag = document.createElement('span');
                 tag.className = 'selected-tag';
                 tag.setAttribute('data-id', id);
                 tag.innerHTML = `${name}<span class="selected-tag-remove">&times;</span>`;
                 
-                // Attach removal event handler to the newly created tag
+                
                 tag.querySelector('.selected-tag-remove').addEventListener('click', function(e) {
-                    e.stopPropagation(); // Stop event from propagating to the search input/container
-                    // Find the corresponding dropdown item and unselect it
+                    e.stopPropagation(); 
                     const dropdownItem = document.querySelector(`#apparatus_dropdown .multi-select-item[data-id="${id}"]`);
                     if (dropdownItem) {
                         dropdownItem.classList.remove('selected');
                         dropdownItem.setAttribute('data-selected', 'false');
                     }
-                    updateApparatusSelection(); // Re-render and update hidden input
+                    updateApparatusSelection();
                     searchInput.focus();
                 });
 
@@ -1124,14 +1117,10 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             }
         });
 
-        // -------------------------------------------------------------------
-        // ** KEY CHANGE: Toggle visibility based on selected items count **
-        // -------------------------------------------------------------------
         if (selectedItems.length === 0) {
             tagsContainer.classList.add('is-empty');
         } else {
             tagsContainer.classList.remove('is-empty');
-            // Add hidden inputs for form submission directly to the tags container
             selectedItems.forEach(id => {
                 const newHiddenInput = document.createElement('input');
                 newHiddenInput.type = 'hidden';
@@ -1142,7 +1131,6 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
         }
     }
     
-    // Function to filter items based on search term
     function filterDropdownItems(searchTerm) {
         let matchFound = false;
         const dropdownItems = document.querySelectorAll('#apparatus_dropdown .multi-select-item');
@@ -1160,19 +1148,12 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
         });
         noMatchItem.style.display = matchFound ? 'none' : 'block';
     }
-    // --- END NEW JAVASCRIPT FOR APPARATUS MULTI-SELECT ---
 
 
     document.addEventListener('DOMContentLoaded', () => {
         
-        // ----------------------------------------------------
-        // >> FIX: Enforce Maximum Date (Today)
-        // ----------------------------------------------------
         setMaxDateToToday('start_date');
         setMaxDateToToday('end_date');
-        // ----------------------------------------------------
-
-        // --- Sidebar Activation (Unchanged) ---
         const path = window.location.pathname.split('/').pop() || 'staff_dashboard.php';
         const links = document.querySelectorAll('.sidebar .nav-link');
         
@@ -1186,7 +1167,6 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             }
         });
         
-        // --- Mobile Toggle Logic (Unchanged) ---
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const mainContent = document.querySelector('.main-content'); 
@@ -1219,56 +1199,49 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             });
         }
         
-        // --- Report View Handler ---
+
         document.getElementById('report_view_type_select').addEventListener('change', updateHubView);
         document.getElementById('main-print-button').addEventListener('click', handlePrint);
         
-        // --- Initial view update ---
         updateHubView();
 
-        // --- Notification Initialization ---
         fetchStaffNotifications();
         setInterval(fetchStaffNotifications, 30000); 
 
 
-        // --- Apparatus Filter Logic Initialization ---
+       
         const searchInput = document.getElementById('apparatus_search_input');
         const dropdown = document.getElementById('apparatus_dropdown');
         const dropdownItems = document.querySelectorAll('#apparatus_dropdown .multi-select-item');
         
-        // 1. Initial update to populate the hidden input/tags on load (from URL parameters)
         updateApparatusSelection(); 
 
-        // 2. Dropdown Toggle (Focus/Blur)
         searchInput.addEventListener('focus', () => {
             dropdown.style.display = 'block';
             searchInput.placeholder = 'Type to filter options...';
-            // Show all options when focused
             filterDropdownItems(''); 
         });
         
-        // Set placeholder back on blur, but delay hiding the dropdown to allow clicks
         searchInput.addEventListener('blur', () => {
             searchInput.placeholder = 'Search and select apparatus...';
         });
 
         document.addEventListener('click', (e) => {
             const container = document.querySelector('.multi-select-container');
-            // Hide dropdown if click is outside the container
             if (container && !container.contains(e.target)) {
                 dropdown.style.display = 'none';
             }
         });
         
-        // 3. Filtering on Keyup
+        
         searchInput.addEventListener('keyup', (e) => {
             filterDropdownItems(searchInput.value);
         });
 
-        // 4. Selection Logic on Click
+        
         dropdownItems.forEach(item => {
             item.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent the body click listener from immediately closing the dropdown
+                e.stopPropagation(); 
 
                 const isSelected = item.getAttribute('data-selected') === 'true';
                 
@@ -1281,36 +1254,35 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
                 }
                 
                 updateApparatusSelection();
-                // Keep the input active for further selection/searching
+              
                 searchInput.focus(); 
                 
-                // Clear the search field after selection/unselection to reveal all matching items
+                
                 searchInput.value = '';
                 filterDropdownItems(''); 
             });
         });
 
-        // 5. Handle 'Clear' button to also clear the custom multi-select
+        
         const clearButton = document.querySelector('.filter-buttons a[href="staff_report.php"]');
         if (clearButton) {
             clearButton.addEventListener('click', () => {
-                // Unselect all items visually and logically before navigating
+                
                 document.querySelectorAll('#apparatus_dropdown .multi-select-item').forEach(item => {
                     item.classList.remove('selected');
                     item.setAttribute('data-selected', 'false');
                 });
-                updateApparatusSelection(); // Clears the hidden inputs and hides the tag container
+                updateApparatusSelection(); 
             });
         }
     });
 
-    // --- REPORT UTILITY FUNCTIONS (Unchanged) ---
+
     function handlePrint() {
         const viewType = document.getElementById('report_view_type_select').value;
         document.body.setAttribute('data-print-view', viewType);
         window.print();
         setTimeout(() => {
-            // Remove attribute after printing is initiated/done to restore screen view styles
             document.body.removeAttribute('data-print-view');
         }, 100);
     }
@@ -1320,13 +1292,13 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
         const sections = ['summary', 'inventory', 'apparatus-list', 'detailed-table'];
         const printButton = document.getElementById('main-print-button');
         
-        // Hide all sections first
+        
         sections.forEach(id => {
             const el = document.getElementById(`report-${id}`);
             if (el) el.style.display = 'none';
         });
 
-        // Show the selected section(s) and update the print button text
+        
         if (viewType === 'all') {
             sections.forEach(id => {
                 const el = document.getElementById(`report-${id}`);
@@ -1334,12 +1306,10 @@ $uniqueApparatusTypes = array_unique(array_column($allApparatus, 'apparatus_type
             });
             printButton.textContent = 'Print All Sections (Hub View)';
         } else if (viewType === 'summary' || viewType === 'inventory' || viewType === 'detailed' || viewType === 'apparatus_list') {
-            // Map the view type to the actual element ID
             const targetId = viewType === 'detailed' ? 'detailed-table' : (viewType === 'apparatus_list' ? 'apparatus-list' : viewType);
             const el = document.getElementById(`report-${targetId}`);
             if (el) el.style.display = 'block';
 
-            // Update button text
             let text = 'Print Report';
             if (viewType === 'summary') text = 'Print Transaction Summary';
             else if (viewType === 'inventory') text = 'Print Inventory Stock Status';

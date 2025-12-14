@@ -12,7 +12,7 @@ $student_id = $_SESSION["user"]["id"];
 
 $isBanned = $transaction->isStudentBanned($student_id); 
 $activeCount = $transaction->getActiveTransactionCount($student_id);
--
+
 $filter = isset($_GET["filter"]) ? $_GET["filter"] : "all";
 
 $transactions = $transaction->getStudentTransactions($student_id);
